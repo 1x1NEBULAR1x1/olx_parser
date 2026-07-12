@@ -57,6 +57,12 @@ npm audit             # полный отчёт
 
 Заголовки безопасности заданы в `next.config.ts` (`poweredByHeader: false`, X-Frame-Options и др.).
 
+## Два сайта на одном VPS (SmartFlip + relpen.org)
+
+Если `v677071.hosted-by-vdsina.com` редиректит на relpen — см. **`deploy/nginx/MULTI-SITE.md`**.
+Кратко: в `smartflip.conf` должен быть правильный `server_name`, upstream `127.0.0.1:8080`,
+у relpen убрать `default_server`, в `.env` указать `NEXTAUTH_URL` на VDSina-домен.
+
 ## Установка на VPS (Ubuntu/Debian)
 
 ### Системные зависимости (обязательно до npm ci)
@@ -126,6 +132,8 @@ node scripts/strip-native-binaries.mjs
 
 npm run build
 # или: ./deploy/build.sh
+
+# НЕ используйте npx next build — Next скачает swc-linux в кэш и упадёт.
 
 sudo systemctl restart smartflip
 ```

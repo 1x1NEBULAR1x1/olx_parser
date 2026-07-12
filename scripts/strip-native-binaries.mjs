@@ -4,6 +4,7 @@
  */
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
@@ -67,6 +68,22 @@ export function stripNativeBinaries() {
       fs.rmSync(file_path, { force: true });
       removed.push(path.relative(root_dir, file_path));
     }
+  }
+
+  // Next.js скачивает нативный SWC сюда, если не нашёл в node_modules — на VPS он битый.
+  const next_swc_fallback = path.join(nm, "next", "next-swc-fallback");
+  if (fs.existsSync(next_swc_fallback)) {
+    fs.rmSync(next_swc_fallback, { recursive: true, force: true });
+    removed.push(path.relative(root_dir, next_swc_fallback));
+  }
+
+  const next_swc_cache = path.join(
+    process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"),
+    "next-swc",
+  );
+  if (fs.existsSync(next_swc_cache)) {
+    fs.rmSync(next_swc_cache, { recursive: true, force: true });
+    removed.push(next_swc_cache);
   }
 
   return removed;

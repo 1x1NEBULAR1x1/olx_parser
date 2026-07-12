@@ -1,4 +1,3 @@
-import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
 const security_headers = [
@@ -9,8 +8,13 @@ const security_headers = [
   { key: "X-DNS-Prefetch-Control", value: "on" },
 ];
 
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   poweredByHeader: false,
+  experimental: {
+    // На Linux VPS с Bus error на нативном SWC — WASM (см. scripts/next-build.sh).
+    useWasmBinary: true,
+  },
   async headers() {
     return [
       {
