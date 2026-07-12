@@ -14,7 +14,7 @@ model ScanRun {
   devices_count      Int       @default(0)
   error_message      String?
   // Прогресс по реальным этапам пайплайна — для индикатора загрузки в %.
-  stage              String?   // "fetching_listings" | "analyzing" | "saving"
+  stage              String?   // "fetching_listings" | "analyzing" | "finalizing" | "saving"
   total_listings     Int?
   processed_listings Int       @default(0)
   devices            Device[]

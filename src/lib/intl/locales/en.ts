@@ -38,8 +38,11 @@ export default {
     devices_found: "devices found",
     stage_fetching_listings: "Fetching listings from OLX...",
     stage_analyzing: "Analyzing listings and pricing parts...",
+    stage_finalizing: "Aggregating results and calculating profitability...",
     stage_saving: "Saving results...",
     progress_of: "{processed} of {total} listings",
+    progress_finalizing: "Processed {processed} of {total}",
+    progress_saving: "Saved {processed} of {total}",
     loaded_of: "Loaded {loaded} of {total}",
   },
 

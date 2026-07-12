@@ -26,6 +26,8 @@ export const config = {
     // (concurrency-limiter.ts), а не здесь. Поэтому можно держать заметно
     // больше объявлений "в полёте" одновременно, чем раньше.
     concurrency: Number(process.env.PIPELINE_CONCURRENCY ?? 8),
+    /** Таймаут анализа одного объявления (OLX + iFixit + запчасти), мс */
+    listing_analyze_timeout_ms: Number(process.env.LISTING_ANALYZE_TIMEOUT_MS ?? 90_000),
   },
 
   telegram: {

@@ -25,6 +25,9 @@ import {
   getPartsCostCache, upsertPartsCostCache,
 } from "./devices-repository";
 import type { AnalyzedDevice, AllegroPart } from "./types";
+import { createLogger, formatDuration } from "./logger";
+
+const pipeline_log = createLogger("pipeline");
 
 const liquidity_calculator = new LiquidityCalculator();
 
@@ -73,6 +76,24 @@ async function runWithConcurrency<T, R>(
   const worker_count = Math.min(concurrency, items.length);
   await Promise.all(Array.from({ length: worker_count }, () => worker()));
   return results;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeout_ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`timeout: ${label} (${timeout_ms}ms)`));
+    }, timeout_ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 // Цепочка источников цен на запчасти, на каждый damage_type отдельно (не
@@ -550,13 +571,173 @@ function resolveMedianPrice(
   );
 }
 
+interface FinalizeDeviceContext {
+  median_maps: MedianPriceMaps;
+  cached_price_by_composite_key: Map<string, number>;
+}
+
+function buildFinalizedDevice(raw: RawAnalyzedListing, ctx: FinalizeDeviceContext): AnalyzedDevice {
+  const { median_maps, cached_price_by_composite_key } = ctx;
+  const is_damaged = raw.damage_types.length > 0;
+  const storage_gb = extractStorageGb(`${raw.title} ${raw.post_summary}`);
+  const model_hint_price = getModelMarketPrice(raw.model_key, storage_gb);
+
+  const median_price = resolveMedianPrice(median_maps, raw.model_key, storage_gb);
+  const cached_median_price = median_price === null
+    ? cached_price_by_composite_key.get(`${raw.brand}::${raw.model_key}`) ?? null
+    : null;
+  const cached_median_adjusted = cached_median_price !== null && storage_gb !== null
+    ? Math.round(
+      cached_median_price * getStorageMultiplier(storage_gb) / getStorageMultiplier(MARKET_REFERENCE_STORAGE_GB),
+    )
+    : cached_median_price;
+  const anchor_price = median_price ?? model_hint_price ?? cached_median_adjusted;
+
+  let market_sell_price: number | null;
+  let market_sell_price_source: "model_median" | "cached_median" | "model_hint" | "brand_estimate" | null;
+
+  if (is_damaged) {
+    const parts_cost_preview = estimatePartsCost(raw.allegro_parts);
+    const working_anchor = anchor_price ?? model_hint_price;
+
+    if (working_anchor !== null) {
+      market_sell_price = estimateDamagedResalePrice(
+        working_anchor,
+        raw.damage_types,
+        raw.price_buy,
+        parts_cost_preview,
+      );
+      market_sell_price_source = median_price !== null
+        ? "model_median"
+        : model_hint_price !== null
+          ? "model_hint"
+          : cached_median_adjusted !== null
+            ? "cached_median"
+            : "brand_estimate";
+    } else {
+      market_sell_price = estimateMarketSellPrice(
+        raw.brand,
+        raw.model_key,
+        raw.price_buy,
+        true,
+        storage_gb,
+        raw.damage_types,
+        parts_cost_preview,
+      );
+      market_sell_price_source = market_sell_price === null
+        ? null
+        : model_hint_price !== null
+          ? "model_hint"
+          : "brand_estimate";
+    }
+  } else if (anchor_price !== null) {
+    market_sell_price = Math.round(
+      anchor_price * (raw.has_box ? 1 + BOX_AND_ACCESSORIES_BONUS_SCORE / 100 : 1),
+    );
+    market_sell_price_source = median_price !== null
+      ? "model_median"
+      : model_hint_price !== null
+        ? "model_hint"
+        : cached_median_adjusted !== null
+          ? "cached_median"
+          : "brand_estimate";
+  } else {
+    market_sell_price = estimateMarketSellPrice(
+      raw.brand,
+      raw.model_key,
+      raw.price_buy,
+      false,
+      storage_gb,
+    );
+    market_sell_price_source = market_sell_price === null
+      ? null
+      : model_hint_price !== null
+        ? "model_hint"
+        : "brand_estimate";
+  }
+
+  const liquidity_data = getLiquidityScore({
+    brand: raw.brand,
+    model_query: raw.model_query,
+    release_year: raw.release_year,
+    has_box: raw.has_box,
+    battery_health_percent: raw.battery_health_percent,
+    storage_gb,
+    market_median_price: anchor_price,
+    damage_types: raw.damage_types,
+  });
+
+  const profitability = calculateProfitability({
+    price_buy: raw.price_buy,
+    parts: raw.allegro_parts,
+    market_sell_price,
+    repairability_score: raw.repairability_score,
+    repairability_scale: raw.repairability_scale,
+  });
+
+  return {
+    id: raw.id,
+    title: raw.title,
+    olx_url: raw.olx_url,
+    price_buy: raw.price_buy,
+    price_currency: raw.price_currency,
+    is_negotiable: raw.is_negotiable,
+    brand: raw.brand,
+    model_query: raw.model_query,
+    model_key: raw.model_key,
+    model_label: raw.model_label,
+    model_line: raw.model_line,
+    model_line_label: raw.model_line_label,
+    photos: raw.photos,
+    city: raw.city,
+    region: raw.region,
+    created_at: raw.created_at,
+    release_year: raw.release_year,
+    has_box: raw.has_box,
+    battery_health_percent: raw.battery_health_percent,
+    storage_gb,
+
+    seller_name: raw.seller_name,
+    seller_ads_count: raw.seller_ads_count,
+    seller_member_since: raw.seller_member_since,
+
+    damage_types: raw.damage_types,
+    post_summary: raw.post_summary,
+
+    repairability_score: raw.repairability_score,
+    repairability_scale: raw.repairability_scale,
+    ifixit_device_name: raw.ifixit_device_name,
+    ifixit_url: raw.ifixit_url,
+
+    allegro_parts: raw.allegro_parts,
+    allegro_search_url: raw.allegro_search_url,
+    ...profitability,
+
+    market_sell_price,
+    market_sell_price_source,
+    ...liquidity_data,
+
+    last_analyzed_at: new Date().toISOString(),
+  };
+}
+
+const FINALIZE_PROGRESS_BATCH = 40;
+
 /**
  * Вторая фаза: считает market_sell_price/profitability/liquidity сразу для
  * всех объявлений скана, потому что медиана цены модели требует видеть ВСЕ
  * объявления той же модели одновременно — раньше эта же цена оценивалась
  * циклически из buy_price ОДНОГО объявления (см. план/TODO.md).
  */
-async function finalizeDevices(raw_listings: RawAnalyzedListing[], cache_ttl_hours: number): Promise<AnalyzedDevice[]> {
+async function finalizeDevices(
+  raw_listings: RawAnalyzedListing[],
+  cache_ttl_hours: number,
+  on_progress?: (processed: number, total: number) => void,
+): Promise<AnalyzedDevice[]> {
+  const finalize_started_at = Date.now();
+  const total = raw_listings.length;
+  on_progress?.(0, total);
+
   // Дедуп model_key ПЕРЕД медианой — иначе разные варианты написания одной и
   // той же модели (регистр/пробелы/опечатки) считались бы отдельными группами
   // и портили и медиану цены, и чекбокс-фильтр моделей на фронтенде (см.
@@ -598,150 +779,23 @@ async function finalizeDevices(raw_listings: RawAnalyzedListing[], cache_ttl_hou
     }),
   );
 
-  const finalized = raw_listings.map((raw) => {
-    const is_damaged = raw.damage_types.length > 0;
-    const storage_gb = extractStorageGb(`${raw.title} ${raw.post_summary}`);
-    const model_hint_price = getModelMarketPrice(raw.model_key, storage_gb);
-
-    const median_price = resolveMedianPrice(median_maps, raw.model_key, storage_gb);
-    const cached_median_price = median_price === null
-      ? cached_price_by_composite_key.get(`${raw.brand}::${raw.model_key}`) ?? null
-      : null;
-    const cached_median_adjusted = cached_median_price !== null && storage_gb !== null
-      ? Math.round(
-        cached_median_price * getStorageMultiplier(storage_gb) / getStorageMultiplier(MARKET_REFERENCE_STORAGE_GB),
-      )
-      : cached_median_price;
-    const anchor_price = median_price ?? model_hint_price ?? cached_median_adjusted;
-
-    let market_sell_price: number | null;
-    let market_sell_price_source: "model_median" | "cached_median" | "model_hint" | "brand_estimate" | null;
-
-    if (is_damaged) {
-      const parts_cost_preview = estimatePartsCost(raw.allegro_parts);
-      const working_anchor = anchor_price ?? model_hint_price;
-
-      if (working_anchor !== null) {
-        market_sell_price = estimateDamagedResalePrice(
-          working_anchor,
-          raw.damage_types,
-          raw.price_buy,
-          parts_cost_preview,
-        );
-        market_sell_price_source = median_price !== null
-          ? "model_median"
-          : model_hint_price !== null
-            ? "model_hint"
-            : cached_median_adjusted !== null
-              ? "cached_median"
-              : "brand_estimate";
-      } else {
-        market_sell_price = estimateMarketSellPrice(
-          raw.brand,
-          raw.model_key,
-          raw.price_buy,
-          true,
-          storage_gb,
-          raw.damage_types,
-          parts_cost_preview,
-        );
-        market_sell_price_source = market_sell_price === null
-          ? null
-          : model_hint_price !== null
-            ? "model_hint"
-            : "brand_estimate";
-      }
-    } else if (anchor_price !== null) {
-      market_sell_price = Math.round(
-        anchor_price * (raw.has_box ? 1 + BOX_AND_ACCESSORIES_BONUS_SCORE / 100 : 1),
-      );
-      market_sell_price_source = median_price !== null
-        ? "model_median"
-        : model_hint_price !== null
-          ? "model_hint"
-          : cached_median_adjusted !== null
-            ? "cached_median"
-            : "brand_estimate";
-    } else {
-      market_sell_price = estimateMarketSellPrice(
-        raw.brand,
-        raw.model_key,
-        raw.price_buy,
-        false,
-        storage_gb,
-      );
-      market_sell_price_source = market_sell_price === null
-        ? null
-        : model_hint_price !== null
-          ? "model_hint"
-          : "brand_estimate";
-    }
-
-    const liquidity_data = getLiquidityScore({
-      brand: raw.brand,
-      model_query: raw.model_query,
-      release_year: raw.release_year,
-      has_box: raw.has_box,
-      battery_health_percent: raw.battery_health_percent,
-      storage_gb,
-      market_median_price: anchor_price,
-      damage_types: raw.damage_types,
-    });
-
-    const profitability = calculateProfitability({
-      price_buy: raw.price_buy,
-      parts: raw.allegro_parts,
-      market_sell_price,
-      repairability_score: raw.repairability_score,
-      repairability_scale: raw.repairability_scale,
-    });
-
-    const device: AnalyzedDevice = {
-      id: raw.id,
-      title: raw.title,
-      olx_url: raw.olx_url,
-      price_buy: raw.price_buy,
-      price_currency: raw.price_currency,
-      is_negotiable: raw.is_negotiable,
-      brand: raw.brand,
-      model_query: raw.model_query,
-      model_key: raw.model_key,
-      model_label: raw.model_label,
-      model_line: raw.model_line,
-      model_line_label: raw.model_line_label,
-      photos: raw.photos,
-      city: raw.city,
-      region: raw.region,
-      created_at: raw.created_at,
-      release_year: raw.release_year,
-      has_box: raw.has_box,
-      battery_health_percent: raw.battery_health_percent,
-      storage_gb,
-
-      seller_name: raw.seller_name,
-      seller_ads_count: raw.seller_ads_count,
-      seller_member_since: raw.seller_member_since,
-
-      damage_types: raw.damage_types,
-      post_summary: raw.post_summary,
-
-      repairability_score: raw.repairability_score,
-      repairability_scale: raw.repairability_scale,
-      ifixit_device_name: raw.ifixit_device_name,
-      ifixit_url: raw.ifixit_url,
-
-      allegro_parts: raw.allegro_parts,
-      allegro_search_url: raw.allegro_search_url,
-      ...profitability,
-
-      market_sell_price,
-      market_sell_price_source,
-      ...liquidity_data,
-
-      last_analyzed_at: new Date().toISOString(),
-    };
-    return device;
+  pipeline_log.info("Finalizing: подготовка медиан", {
+    devices: total,
+    cache_lookups: model_keys_needing_cache_lookup.size,
   });
+
+  const finalize_ctx: FinalizeDeviceContext = { median_maps, cached_price_by_composite_key };
+  const finalized: AnalyzedDevice[] = [];
+  for (let i = 0; i < raw_listings.length; i += 1) {
+    finalized.push(buildFinalizedDevice(raw_listings[i], finalize_ctx));
+    const processed = i + 1;
+    if (
+      processed === total
+      || processed % FINALIZE_PROGRESS_BATCH === 0
+    ) {
+      on_progress?.(processed, total);
+    }
+  }
 
   // Обновляем кросс-скановый якорь цены ТОЛЬКО для моделей, у которых в этом
   // скане была настоящая медиана (не сам кэш и не грубый brand-эстимейт) —
@@ -761,11 +815,18 @@ async function finalizeDevices(raw_listings: RawAnalyzedListing[], cache_ttl_hou
     }),
   );
 
+  on_progress?.(total, total);
+  pipeline_log.info("Finalizing завершён", {
+    devices: total,
+    duration: formatDuration(Date.now() - finalize_started_at),
+    median_models_cached: fresh_median_by_composite_key.size,
+  });
+
   return finalized.sort((a, b) => (b.profitability_pct ?? -999) - (a.profitability_pct ?? -999));
 }
 
 export interface PipelineProgress {
-  stage: "fetching_listings" | "analyzing";
+  stage: "fetching_listings" | "analyzing" | "finalizing";
   total_listings?: number;
   processed_listings?: number;
 }
@@ -773,12 +834,19 @@ export interface PipelineProgress {
 export async function runFullPipeline(
   on_progress?: (progress: PipelineProgress) => void,
 ): Promise<AnalyzedDevice[]> {
+  const pipeline_started_at = Date.now();
+  pipeline_log.info("Старт пайплайна");
   on_progress?.({ stage: "fetching_listings" });
 
+  const fetch_started_at = Date.now();
   const listings = await fetchOlxListingsForStates({
     states: config.pipeline.olx_state_filters,
     max_pages: config.pipeline.olx_max_pages,
     limit: config.pipeline.olx_page_limit,
+  });
+  pipeline_log.info("OLX: объявления загружены", {
+    count: listings.length,
+    duration: formatDuration(Date.now() - fetch_started_at),
   });
 
   on_progress?.({ stage: "analyzing", total_listings: listings.length, processed_listings: 0 });
@@ -799,24 +867,58 @@ export async function runFullPipeline(
   };
 
   let processed_count = 0;
+  let skipped_count = 0;
+  const analyze_started_at = Date.now();
+  const listing_timeout_ms = config.pipeline.listing_analyze_timeout_ms;
   const raw_results = await runWithConcurrency(
     listings,
     config.pipeline.concurrency,
-    (listing) => analyzeSingleListing(
-      listing,
-      battery_threshold_percent,
-      junk_settings,
-      platform_settings,
-      cache_ttl_hours,
-    ),
+    (listing) => withTimeout(
+      analyzeSingleListing(
+        listing,
+        battery_threshold_percent,
+        junk_settings,
+        platform_settings,
+        cache_ttl_hours,
+      ),
+      listing_timeout_ms,
+      `listing ${listing.id}`,
+    ).catch((error) => {
+      skipped_count += 1;
+      pipeline_log.warn("Пропуск объявления", {
+        listing_id: listing.id,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }),
     () => {
       processed_count += 1;
-      on_progress?.({ stage: "analyzing", processed_listings: processed_count });
+      on_progress?.({ stage: "analyzing", total_listings: listings.length, processed_listings: processed_count });
     },
   );
   // null — объявление признано мусором (см. junk-filter.ts) и не должно
   // попасть ни в медиану цены, ни в сохранённые устройства.
   const raw_listings = raw_results.filter((raw): raw is RawAnalyzedListing => raw !== null);
 
-  return finalizeDevices(raw_listings, cache_ttl_hours);
+  const rejected_count = listings.length - raw_listings.length;
+  pipeline_log.info("Анализ объявлений завершён", {
+    total: listings.length,
+    accepted: raw_listings.length,
+    rejected: rejected_count,
+    errors_or_timeouts: skipped_count,
+    duration: formatDuration(Date.now() - analyze_started_at),
+  });
+
+  on_progress?.({ stage: "finalizing", total_listings: raw_listings.length, processed_listings: 0 });
+
+  const devices = await finalizeDevices(raw_listings, cache_ttl_hours, (processed, total) => {
+    on_progress?.({ stage: "finalizing", total_listings: total, processed_listings: processed });
+  });
+
+  pipeline_log.info("Пайплайн завершён", {
+    devices: devices.length,
+    duration: formatDuration(Date.now() - pipeline_started_at),
+  });
+
+  return devices;
 }

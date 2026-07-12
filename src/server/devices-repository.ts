@@ -3,6 +3,9 @@ import type { AllegroPart, AnalyzedDevice, DevicesFilterMeta } from "./types";
 import type { Device, Part } from "@prisma/client";
 import { buildDevicesFilterMeta, type DeviceFilterRow } from "./devices-filter-meta";
 import { evaluateJunkStatus, type JunkFilterSettings } from "./junk-filter";
+import { createLogger } from "./logger";
+
+const db_log = createLogger("db");
 
 type DeviceWithParts = Device & { parts: Part[] };
 
@@ -117,6 +120,82 @@ const DEVICE_FILTER_SELECT = {
   release_year: true,
 } as const;
 
+type DeviceFilterSelectRow = {
+  id: number;
+  title: string;
+  price_buy: number | null;
+  post_summary: string | null;
+  brand: string | null;
+  model_key: string | null;
+  profitability_pct: number | null;
+  model_label: string | null;
+  model_line: string | null;
+  model_line_label: string | null;
+  damage_types: string;
+  region: string | null;
+  liquidity_score: number | null;
+  release_year: number | null;
+};
+
+interface DevicesListCache {
+  cache_key: string;
+  cached_at: string | null;
+  visible_rows: DeviceFilterSelectRow[];
+}
+
+let devices_list_cache: DevicesListCache | null = null;
+
+function invalidateDevicesListCache(): void {
+  devices_list_cache = null;
+}
+
+function compareProfitabilityRowDesc(a: DeviceFilterSelectRow, b: DeviceFilterSelectRow): number {
+  if (a.profitability_pct === null && b.profitability_pct === null) return 0;
+  if (a.profitability_pct === null) return 1;
+  if (b.profitability_pct === null) return -1;
+  return b.profitability_pct - a.profitability_pct;
+}
+
+async function getDevicesListCache(): Promise<DevicesListCache> {
+  const [filter_rows, cached_at, app_settings] = await Promise.all([
+    prisma.device.findMany({ select: DEVICE_FILTER_SELECT }),
+    getCachedAt(),
+    getAppSettings(),
+  ]);
+
+  const cache_key = [
+    cached_at ?? "none",
+    app_settings.exclude_junk_listings ? "1" : "0",
+    app_settings.junk_min_release_year,
+  ].join(":");
+
+  if (devices_list_cache?.cache_key === cache_key) {
+    return devices_list_cache;
+  }
+
+  const junk_settings: JunkFilterSettings = {
+    exclude_junk_listings: app_settings.exclude_junk_listings,
+    junk_min_release_year: app_settings.junk_min_release_year,
+  };
+
+  const visible_rows = app_settings.exclude_junk_listings
+    ? filter_rows.filter((row) => !evaluateJunkStatus(
+      {
+        title: row.title,
+        post_summary: row.post_summary,
+        brand: row.brand,
+        model_key: row.model_key,
+        price_buy: row.price_buy,
+        release_year: row.release_year,
+      },
+      junk_settings,
+    ).is_junk)
+    : filter_rows;
+
+  devices_list_cache = { cache_key, cached_at, visible_rows };
+  return devices_list_cache;
+}
+
 export interface DevicesPageResult {
   devices: AnalyzedDevice[];
   total_count: number;
@@ -136,31 +215,9 @@ export async function getLatestDevicesPage(
   const hidden_set = new Set(page_options.hidden_device_ids ?? []);
   const favorite_set = new Set(page_options.favorite_device_ids ?? []);
 
-  const [filter_rows, cached_at, app_settings] = await Promise.all([
-    prisma.device.findMany({ select: DEVICE_FILTER_SELECT }),
-    getCachedAt(),
-    getAppSettings(),
-  ]);
+  const { visible_rows: junk_filtered_rows, cached_at } = await getDevicesListCache();
 
-  const junk_settings: JunkFilterSettings = {
-    exclude_junk_listings: app_settings.exclude_junk_listings,
-    junk_min_release_year: app_settings.junk_min_release_year,
-  };
-
-  let visible_rows = filter_rows;
-  if (app_settings.exclude_junk_listings) {
-    visible_rows = visible_rows.filter((row) => !evaluateJunkStatus(
-      {
-        title: row.title,
-        post_summary: row.post_summary,
-        brand: row.brand,
-        model_key: row.model_key,
-        price_buy: row.price_buy,
-        release_year: row.release_year,
-      },
-      junk_settings,
-    ).is_junk);
-  }
+  let visible_rows = junk_filtered_rows;
   if (!page_options.include_hidden && hidden_set.size > 0) {
     visible_rows = visible_rows.filter((row) => !hidden_set.has(row.id));
   }
@@ -168,12 +225,7 @@ export async function getLatestDevicesPage(
     visible_rows = visible_rows.filter((row) => favorite_set.has(row.id));
   }
 
-  const sorted_rows = [...visible_rows].sort((a, b) => {
-    if (a.profitability_pct === null && b.profitability_pct === null) return 0;
-    if (a.profitability_pct === null) return 1;
-    if (b.profitability_pct === null) return -1;
-    return b.profitability_pct - a.profitability_pct;
-  });
+  const sorted_rows = [...visible_rows].sort(compareProfitabilityRowDesc);
 
   const total_count = sorted_rows.length;
   const slice_rows = sorted_rows.slice(offset, offset + limit);
@@ -206,12 +258,22 @@ export async function getLatestDevicesPage(
   };
 }
 
-export async function saveDevices(scan_id: string, devices: AnalyzedDevice[]): Promise<void> {
-  await prisma.$transaction(async (tx) => {
-    await tx.device.deleteMany({});
+export async function saveDevices(
+  scan_id: string,
+  devices: AnalyzedDevice[],
+  on_progress?: (processed: number, total: number) => void,
+): Promise<void> {
+  const save_started_at = Date.now();
+  const total = devices.length;
+  on_progress?.(0, total);
 
-    for (const device of devices) {
-      await tx.device.create({
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.device.deleteMany({});
+
+      for (let index = 0; index < devices.length; index += 1) {
+        const device = devices[index];
+        await tx.device.create({
         data: {
           id: device.id,
           title: device.title,
@@ -272,8 +334,23 @@ export async function saveDevices(scan_id: string, devices: AnalyzedDevice[]): P
           },
         },
       });
-    }
-  });
+        const processed = index + 1;
+        if (processed === total || processed % 10 === 0) {
+          on_progress?.(processed, total);
+        }
+      }
+    });
+    on_progress?.(total, total);
+    invalidateDevicesListCache();
+    db_log.info("Устройства сохранены", {
+      scan_id,
+      count: total,
+      duration_ms: Date.now() - save_started_at,
+    });
+  } catch (error) {
+    db_log.error("Ошибка сохранения устройств", { scan_id, count: total }, error);
+    throw error;
+  }
 }
 
 export async function getLatestDevices(): Promise<{ devices: AnalyzedDevice[]; cached_at: string | null }> {
@@ -298,7 +375,7 @@ export async function createScanRun(): Promise<string> {
 }
 
 export interface ScanProgressPatch {
-  stage?: "fetching_listings" | "analyzing" | "saving";
+  stage?: "fetching_listings" | "analyzing" | "finalizing" | "saving";
   total_listings?: number;
   processed_listings?: number;
 }
@@ -321,7 +398,7 @@ export async function updateScanProgress(scan_id: string, patch: ScanProgressPat
  * статус "running" легитимен и означает реально идущий скан.
  */
 export async function reconcileStaleScanRuns(): Promise<void> {
-  await prisma.scanRun.updateMany({
+  const result = await prisma.scanRun.updateMany({
     where: { status: "running" },
     data: {
       status: "failed",
@@ -329,6 +406,9 @@ export async function reconcileStaleScanRuns(): Promise<void> {
       error_message: "Прервано перезапуском сервера",
     },
   });
+  if (result.count > 0) {
+    db_log.warn("Помечены прерванные сканы", { count: result.count });
+  }
 }
 
 export async function finishScanRun(

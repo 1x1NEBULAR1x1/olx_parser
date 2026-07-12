@@ -38,8 +38,11 @@ export default {
     devices_found: "znalezionych urządzeń",
     stage_fetching_listings: "Pobieranie ogłoszeń z OLX...",
     stage_analyzing: "Analiza ogłoszeń i wycena części...",
+    stage_finalizing: "Podsumowanie wyników i kalkulacja rentowności...",
     stage_saving: "Zapisywanie wyników...",
     progress_of: "{processed} z {total} ogłoszeń",
+    progress_finalizing: "Przetworzono {processed} z {total}",
+    progress_saving: "Zapisano {processed} z {total}",
     loaded_of: "Załadowano {loaded} z {total}",
   },
 

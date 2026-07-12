@@ -60,8 +60,14 @@ export function ScanBanner({
     : null;
 
   const stage_label = stage ? t(`stage_${stage}` as const) : t("in_progress");
-  const progress_detail = stage === "analyzing" && total_listings
-    ? t("progress_of", { processed: processed_listings, total: total_listings })
+  const progress_detail = total_listings && is_scanning
+    ? stage === "saving"
+      ? t("progress_saving", { processed: processed_listings, total: total_listings })
+      : stage === "finalizing"
+        ? t("progress_finalizing", { processed: processed_listings, total: total_listings })
+        : stage === "analyzing"
+          ? t("progress_of", { processed: processed_listings, total: total_listings })
+          : null
     : null;
 
   return (

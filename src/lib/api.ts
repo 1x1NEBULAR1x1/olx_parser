@@ -91,7 +91,7 @@ export interface DevicesFilterMeta {
   year_bounds: [number, number];
 }
 
-export type ScanStage = "fetching_listings" | "analyzing" | "saving";
+export type ScanStage = "fetching_listings" | "analyzing" | "finalizing" | "saving";
 
 export interface DevicesListResponse {
   devices: AnalyzedDevice[];

@@ -100,7 +100,7 @@ export interface DevicesListResponse {
   filter_meta: DevicesFilterMeta | null;
   cached_at: string | null;
   is_scanning: boolean;
-  stage: "fetching_listings" | "analyzing" | "saving" | null;
+  stage: "fetching_listings" | "analyzing" | "finalizing" | "saving" | null;
   total_listings: number | null;
   processed_listings: number;
   percent: number;
