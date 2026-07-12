@@ -62,7 +62,7 @@ export default function NotificationsPage() {
           <span className="text-sm app-text-muted flex-1">{t("title")}</span>
           <Link
             href="/notifications/settings"
-            className="app-btn-ghost whitespace-nowrap max-sm:hidden"
+            className="app-btn-ghost whitespace-nowrap hidden sm:inline-flex"
           >
             <Settings size={16} aria-hidden />
             {t("settings")}

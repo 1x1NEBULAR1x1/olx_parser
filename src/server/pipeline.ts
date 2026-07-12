@@ -13,10 +13,14 @@ import { extractStorageGb, getModelMarketPrice, getStorageMultiplier, MARKET_REF
 import { extractModelKey } from "./model-normalizer";
 import { extractModelLine } from "./model-line-extractor";
 import { clusterModelKeys } from "./model-key-clusterer";
-import { evaluateJunkStatus, type JunkFilterSettings } from "./junk-filter";
-import { isPlatformExcluded, type PlatformFilterSettings } from "./platform-filter";
 import { calculateProfitability, estimatePartsCost } from "./profitability";
-import { getStaticPartsEstimate, buildAllegroSearchUrl, PART_SEARCH_KEYWORDS } from "./static-parts-prices";
+import { buildAllegroSearchUrl, PART_SEARCH_KEYWORDS } from "./static-parts-prices";
+import {
+  buildStaticPartStub,
+  buildIfixitSearchStubUrl,
+  ensurePartsStubsForDamageTypes,
+  getRepairabilityStub,
+} from "./repair-parts-stubs";
 import { fetchCeneoParts } from "./ceneo-fetcher";
 import { fetchOlxParts, buildOlxPartsSearchUrl } from "./olx-parts-fetcher";
 import {
@@ -112,42 +116,37 @@ async function fetchPartsForDamageType(
   brand: string,
   model_short: string,
   model_query: string,
+  model_label: string,
   damage_type: string,
+  storage_gb: number | null,
 ): Promise<AllegroPart[]> {
   const keyword = PART_SEARCH_KEYWORDS[damage_type];
-  if (!keyword) return [];
 
-  const olx_result = await fetchOlxParts(
-    brand,
-    model_short,
-    damage_type,
-    keyword,
-    config.pipeline.allegro_parts_per_model,
-  );
-  if (olx_result.parts.length > 0) {
-    return olx_result.parts.map((p) => ({ ...p, damage_type }));
+  if (keyword) {
+    const olx_result = await fetchOlxParts(
+      brand,
+      model_short,
+      damage_type,
+      keyword,
+      config.pipeline.allegro_parts_per_model,
+    );
+    if (olx_result.parts.length > 0) {
+      return olx_result.parts.map((p) => ({ ...p, damage_type }));
+    }
+
+    const ceneo_result = await fetchCeneoParts(
+      brand,
+      model_short,
+      damage_type,
+      keyword,
+      config.pipeline.allegro_parts_per_model,
+    );
+    if (ceneo_result.parts.length > 0) {
+      return ceneo_result.parts.map((p) => ({ ...p, damage_type }));
+    }
   }
 
-  const ceneo_result = await fetchCeneoParts(
-    brand,
-    model_short,
-    damage_type,
-    keyword,
-    config.pipeline.allegro_parts_per_model,
-  );
-  if (ceneo_result.parts.length > 0) {
-    return ceneo_result.parts.map((p) => ({ ...p, damage_type }));
-  }
-
-  const static_estimates = getStaticPartsEstimate(brand, model_query, [damage_type]);
-  return static_estimates.map((est) => ({
-    title: `${est.part_name} ★ szacunkowa cena`,
-    price: est.price_estimate,
-    currency: "PLN",
-    url: buildOlxPartsSearchUrl(est.allegro_search_query),
-    image: null,
-    damage_type: est.damage_type,
-  }));
+  return [buildStaticPartStub(brand, model_query, model_label, damage_type, storage_gb)];
 }
 
 function buildDamageSignature(damage_types: string[]): string {
@@ -157,9 +156,11 @@ function buildDamageSignature(damage_types: string[]): string {
 async function fetchPartsData(
   brand: string,
   model_query: string,
+  model_label: string,
   model_key: string,
   damage_types: string[],
   cache_ttl_hours: number,
+  storage_gb: number | null,
 ): Promise<{
   parts: AllegroPart[];
   search_url: string | null;
@@ -196,9 +197,23 @@ async function fetchPartsData(
   // уровне источника (olx-parts-fetcher.ts/ceneo-fetcher.ts), а не порядок
   // самих вызовов.
   const results_by_type = await Promise.all(
-    damage_types.map((damage_type) => fetchPartsForDamageType(brand, model_short, model_query, damage_type)),
+    damage_types.map((damage_type) => fetchPartsForDamageType(
+      brand,
+      model_short,
+      model_query,
+      model_label,
+      damage_type,
+      storage_gb,
+    )),
   );
-  const parts: AllegroPart[] = results_by_type.flat();
+  const parts = ensurePartsStubsForDamageTypes(
+    results_by_type.flat(),
+    damage_types,
+    brand,
+    model_query,
+    model_label,
+    storage_gb,
+  );
 
   const entry = { parts, search_url: fallback_search_url };
   setAllegroCache(brand, model_query, damage_types, entry);
@@ -314,6 +329,9 @@ async function resolveIfixitDataForQuery(
 
   try {
     const device_match = await lookupIfixitDeviceMatch(device_query);
+    if (device_match.repairability_score === null && device_match.device_name === null) {
+      return applyIfixitFallback(brand, device_query);
+    }
     const entry = {
       repairability_score: device_match.repairability_score,
       repairability_scale: device_match.repairability_scale,
@@ -335,14 +353,25 @@ async function resolveIfixitDataForQuery(
       release_year: device_match.release_year,
     };
   } catch {
-    return {
-      repairability_score: null,
-      repairability_scale: null,
-      ifixit_device_name: null,
-      ifixit_url: null,
-      release_year: null,
-    };
+    return applyIfixitFallback(brand, device_query);
   }
+}
+
+function applyIfixitFallback(brand: string, device_query: string): {
+  repairability_score: number | null;
+  repairability_scale: number | null;
+  ifixit_device_name: string | null;
+  ifixit_url: string | null;
+  release_year: number | null;
+} {
+  const stub = getRepairabilityStub(brand);
+  return {
+    repairability_score: stub.repairability_score,
+    repairability_scale: stub.repairability_scale,
+    ifixit_device_name: null,
+    ifixit_url: buildIfixitSearchStubUrl(device_query),
+    release_year: null,
+  };
 }
 
 // "Сырой" результат первой фазы анализа — всё, что можно посчитать по ОДНОМУ
@@ -390,31 +419,12 @@ interface RawAnalyzedListing {
 async function analyzeSingleListing(
   listing: ParsedOlxListing,
   battery_threshold_percent: number,
-  junk_settings: JunkFilterSettings,
-  platform_settings: PlatformFilterSettings,
   cache_ttl_hours: number,
 ): Promise<RawAnalyzedListing | null> {
   const brand = extractBrand(listing.title);
   const { model_key, model_label } = extractModelKey(brand, listing.title);
   const { model_line, model_line_label } = extractModelLine(brand, model_key);
   let release_year = getReleaseYear(model_key);
-
-  if (isPlatformExcluded(brand, listing.title, model_key, platform_settings)) {
-    return null;
-  }
-
-  // Ранняя проверка на "мусор" — ДО дорогих сетевых запросов (iFixit,
-  // запчасти). Явный мусор (неизвестная модель, слишком старый год,
-  // нереалистичная цена, лот/сервис прямо в заголовке) виден уже здесь, без
-  // необходимости грузить и парсить страницу самого объявления — экономит
-  // время скана на заведомо отбрасываемых карточках.
-  const early_junk_check = evaluateJunkStatus(
-    { title: listing.title, post_summary: "", brand, model_key, price_buy: listing.price_value, release_year },
-    junk_settings,
-  );
-  if (early_junk_check.is_junk) {
-    return null;
-  }
 
   let damage_types: string[] = [];
   let post_summary = "";
@@ -440,23 +450,21 @@ async function analyzeSingleListing(
     // и без повреждений (лучше проанализировать частично, чем упустить лот).
   }
 
-  // Повторная проверка теперь с post_summary — ловит лоты/сервисные
-  // объявления, упомянутые только в тексте описания, а не в заголовке.
-  const final_junk_check = evaluateJunkStatus(
-    { title: listing.title, post_summary, brand, model_key, price_buy: listing.price_value, release_year },
-    junk_settings,
-  );
-  if (final_junk_check.is_junk) {
-    return null;
-  }
-
-  const model_short = device_query.split(" ").slice(0, 3).join(" ");
+  const storage_gb = extractStorageGb(`${listing.title} ${post_summary}`);
 
   // Поиск iFixit и поиск/оценка цен на запчасти не зависят друг от друга —
   // раньше шли строго последовательно (запчасти ждали iFixit впустую).
   const [ifixit_data, allegro_data] = await Promise.all([
     resolveIfixitDataForQuery(device_query, brand, model_key, cache_ttl_hours),
-    fetchPartsData(brand, model_short, model_key, damage_types, cache_ttl_hours),
+    fetchPartsData(
+      brand,
+      device_query,
+      model_label,
+      model_key,
+      damage_types,
+      cache_ttl_hours,
+      storage_gb,
+    ),
   ]);
 
   if (release_year === null && ifixit_data.release_year !== null) {
@@ -857,14 +865,6 @@ export async function runFullPipeline(
   const app_settings = await getAppSettings();
   const battery_threshold_percent = app_settings.battery_health_threshold_percent;
   const cache_ttl_hours = app_settings.cache_ttl_hours;
-  const junk_settings: JunkFilterSettings = {
-    exclude_junk_listings: app_settings.exclude_junk_listings,
-    junk_min_release_year: app_settings.junk_min_release_year,
-  };
-  const platform_settings: PlatformFilterSettings = {
-    exclude_iphone: app_settings.exclude_iphone,
-    exclude_android: app_settings.exclude_android,
-  };
 
   let processed_count = 0;
   let skipped_count = 0;
@@ -877,8 +877,6 @@ export async function runFullPipeline(
       analyzeSingleListing(
         listing,
         battery_threshold_percent,
-        junk_settings,
-        platform_settings,
         cache_ttl_hours,
       ),
       listing_timeout_ms,
@@ -896,8 +894,7 @@ export async function runFullPipeline(
       on_progress?.({ stage: "analyzing", total_listings: listings.length, processed_listings: processed_count });
     },
   );
-  // null — объявление признано мусором (см. junk-filter.ts) и не должно
-  // попасть ни в медиану цены, ни в сохранённые устройства.
+  // null — ошибка/таймаут анализа объявления.
   const raw_listings = raw_results.filter((raw): raw is RawAnalyzedListing => raw !== null);
 
   const rejected_count = listings.length - raw_listings.length;

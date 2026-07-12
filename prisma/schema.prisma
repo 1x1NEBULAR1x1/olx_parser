@@ -98,15 +98,6 @@ model Device {
 model AppSettings {
   id                               Int      @id @default(1)
   battery_health_threshold_percent Int      @default(80)
-  // "Режим исключения мусора" — старые модели (release_year < junk_min_release_year),
-  // нереалистичные цены, лоты/сервисные объявления (см. junk-filter.ts). Включён
-  // по умолчанию — фильтр минимального года выпуска теперь ЧАСТЬ этого режима,
-  // а не отдельная независимая настройка.
-  exclude_junk_listings            Boolean  @default(true)
-  junk_min_release_year            Int      @default(2017)
-  // Исключить iPhone (brand=apple) / Android (все остальные известные бренды)
-  exclude_iphone                   Boolean  @default(false)
-  exclude_android                  Boolean  @default(false)
   // Авто-актуализация: период (мин) для периодического авто-скана через
   // node-cron (см. scan-scheduler.ts). 0 = выключено (только автозапуск при
   // старте сервера, как раньше).
@@ -228,13 +219,27 @@ model User {
   is_approved    Boolean   @default(false)
   accounts       Account[]
   sessions       Session[]
-  favorites      FavoriteDevice[]
-  hidden_devices HiddenDevice[]
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  favorites         FavoriteDevice[]
+  hidden_devices    HiddenDevice[]
+  display_settings  UserDisplaySettings?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([is_approved])
   @@index([role])
+}
+
+// Персональные настройки отображения ленты (1:1 с User).
+model UserDisplaySettings {
+  id                    Int      @id @default(autoincrement())
+  user_id               String   @unique
+  user                  User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  exclude_junk_listings Boolean  @default(true)
+  junk_min_release_year Int      @default(2017)
+  exclude_iphone        Boolean  @default(false)
+  exclude_android       Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model Account {

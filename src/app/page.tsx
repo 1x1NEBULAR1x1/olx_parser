@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
-import Link from "next/link";
+import { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react";
+import { usePathname } from "next/navigation";
 import {
-  Loader2, Search, Settings, SlidersHorizontal, Smartphone, X,
+  Loader2, Search, SlidersHorizontal, Smartphone, X,
 } from "lucide-react";
 import { DeviceCard } from "@/components/DeviceCard/DeviceCard";
 import { FilterBar } from "@/components/FilterBar/FilterBar";
@@ -12,7 +12,7 @@ import { HeaderActions } from "@/components/HeaderActions/HeaderActions";
 import { Pagination } from "@/components/Pagination/Pagination";
 import { useTranslations } from "next-intl";
 import { useFiltersStore } from "@/store/filters-store";
-import { useScrollStore, PAGE_SIZE_OPTIONS } from "@/store/scroll-store";
+import { useScrollStore, PAGE_SIZE_OPTIONS, hasFeedScrollStoreHydrated, onFeedScrollStoreHydrated } from "@/store/scroll-store";
 import { getModelLineSortKey } from "@/server/model-line-extractor";
 import { useDevicesFeed } from "@/hooks/useDevicesFeed";
 import { compareRecommendedRepair } from "@/lib/recommendedRepairScore";
@@ -101,6 +101,7 @@ export default function HomePage() {
   const set_filters = useFiltersStore((state) => state.set_filters);
   const feed_scroll_y = useScrollStore((state) => state.feed_scroll_y);
   const saved_page = useScrollStore((state) => state.saved_page);
+  const saved_loaded_count = useScrollStore((state) => state.saved_loaded_count);
   const page_size = useScrollStore((state) => state.page_size);
   const set_page_size = useScrollStore((state) => state.set_page_size);
   const set_feed_scroll = useScrollStore((state) => state.set_feed_scroll);
@@ -120,8 +121,28 @@ export default function HomePage() {
   const [sort, set_sort] = useState<SortKey>("recommended_repair");
   const [is_filters_open, set_is_filters_open] = useState(false);
   const [page, set_page] = useState(1);
+  const [scroll_hydrated, set_scroll_hydrated] = useState(hasFeedScrollStoreHydrated);
   const [scroll_restored, set_scroll_restored] = useState(false);
   const is_first_filter_render = useRef(true);
+  const pathname = usePathname();
+  const prev_pathname_ref = useRef(pathname);
+  const pending_scroll_restore_ref = useRef(false);
+
+  useEffect(() => {
+    if ("scrollRestoration" in history) {
+      history.scrollRestoration = "manual";
+    }
+  }, []);
+
+  useEffect(() => onFeedScrollStoreHydrated(() => set_scroll_hydrated(true)), []);
+
+  useEffect(() => {
+    if (!scroll_hydrated || feed_scroll_y <= 0) return;
+    pending_scroll_restore_ref.current = true;
+    if (page !== saved_page) {
+      set_page(saved_page);
+    }
+  }, [scroll_hydrated, feed_scroll_y, saved_page, page]);
 
   const brand_tree = filter_meta?.brand_tree ?? [];
   const models_by_brand = filter_meta?.models_by_brand ?? {};
@@ -154,18 +175,38 @@ export default function HomePage() {
     clear_feed_scroll();
   }, [filters, sort, page_size, clear_feed_scroll]);
 
-  useEffect(() => {
-    if (initial_loading || scroll_restored || feed_scroll_y <= 0) return;
-    if (page !== saved_page) {
-      set_page(saved_page);
-      return;
-    }
-    requestAnimationFrame(() => {
-      window.scrollTo({ top: feed_scroll_y, behavior: "instant" as ScrollBehavior });
-      set_scroll_restored(true);
-      clear_feed_scroll();
-    });
-  }, [initial_loading, scroll_restored, feed_scroll_y, saved_page, page, clear_feed_scroll]);
+  useLayoutEffect(() => {
+    if (!pending_scroll_restore_ref.current || scroll_restored) return;
+    if (!scroll_hydrated || initial_loading || feed_scroll_y <= 0) return;
+    if (page !== saved_page) return;
+
+    const needs_more_data = saved_loaded_count > 0 && loaded_count < saved_loaded_count;
+    if (needs_more_data && loading_more) return;
+
+    const max_scroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    if (feed_scroll_y > max_scroll + 8 && loading_more) return;
+
+    window.scrollTo({ top: feed_scroll_y, left: 0, behavior: "instant" });
+
+    const applied = Math.abs(window.scrollY - feed_scroll_y) <= 48
+      || feed_scroll_y <= max_scroll + 8;
+    if (!applied && loading_more) return;
+
+    pending_scroll_restore_ref.current = false;
+    set_scroll_restored(true);
+    clear_feed_scroll();
+  }, [
+    scroll_hydrated,
+    initial_loading,
+    scroll_restored,
+    feed_scroll_y,
+    saved_page,
+    saved_loaded_count,
+    page,
+    loaded_count,
+    loading_more,
+    clear_feed_scroll,
+  ]);
 
   function handlePageSizeChange(next_page_size: number) {
     set_page_size(next_page_size);
@@ -179,9 +220,23 @@ export default function HomePage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function handleDeviceNavigate() {
-    set_feed_scroll(window.scrollY, current_page);
+  function saveFeedScrollPosition() {
+    set_feed_scroll(window.scrollY, current_page, loaded_count);
+    pending_scroll_restore_ref.current = true;
   }
+
+  function handleDeviceNavigate() {
+    saveFeedScrollPosition();
+  }
+
+  useEffect(() => {
+    const prev_pathname = prev_pathname_ref.current;
+    if (prev_pathname === "/" && pathname.startsWith("/devices/")) {
+      set_feed_scroll(window.scrollY, current_page, loaded_count);
+      pending_scroll_restore_ref.current = true;
+    }
+    prev_pathname_ref.current = pathname;
+  }, [pathname, current_page, loaded_count, set_feed_scroll]);
 
   function handleFiltersChange(next_filters: FilterValues) {
     set_filters(next_filters);
@@ -218,15 +273,6 @@ export default function HomePage() {
               <SlidersHorizontal size={16} aria-hidden />
               {tf("title")}
             </button>
-
-            <Link
-              href="/settings"
-              className="app-btn-icon max-sm:hidden"
-              aria-label={t_app("settings")}
-              title={t_app("settings")}
-            >
-              <Settings size={18} aria-hidden />
-            </Link>
 
             <HeaderActions />
           </div>

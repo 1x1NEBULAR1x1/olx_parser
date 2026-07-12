@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import type { AllegroPart } from "./types";
-import { isPriceRealistic, isRelevantProduct, mentionsPartKeyword, parsePlnPrice } from "./parts-shared";
+import { filterPartsByMedianPrice, isPriceRealistic, isRelevantProduct, mentionsPartKeyword, parsePlnPrice } from "./parts-shared";
 import { createConcurrencyLimiter, fetchWithTimeout } from "./concurrency-limiter";
 
 // Allegro REST API требует верификации приложения для GET /offers/listing —
@@ -136,14 +136,17 @@ export async function fetchOlxParts(
   try {
     const all_products = await fetchOlxPartsPage(search_query);
 
-    const valid_parts: AllegroPart[] = all_products
-      .filter(
-        (p) =>
-          isSinglePartListing(p.title) &&
-          isRelevantProduct(p.title, brand, model_snippet) &&
-          mentionsPartKeyword(p.title, part_keyword) &&
-          isPriceRealistic(p.price, damage_type),
-      )
+    const prefiltered = all_products.filter(
+      (p) =>
+        isSinglePartListing(p.title) &&
+        isRelevantProduct(p.title, brand, model_snippet) &&
+        mentionsPartKeyword(p.title, part_keyword) &&
+        isPriceRealistic(p.price, damage_type),
+    );
+
+    const median_filtered = filterPartsByMedianPrice(prefiltered, damage_type);
+
+    const valid_parts: AllegroPart[] = median_filtered
       .sort((a, b) => a.price - b.price)
       .slice(0, limit)
       .map((p) => ({

@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import type { AllegroPart } from "./types";
-import { isPriceRealistic, isRelevantProduct, parsePlnPrice } from "./parts-shared";
+import { filterPartsByMedianPrice, isPriceRealistic, isRelevantProduct, parsePlnPrice } from "./parts-shared";
 import { createConcurrencyLimiter, fetchWithTimeout } from "./concurrency-limiter";
 
 const CENEO_BASE = "https://www.ceneo.pl";
@@ -125,12 +125,16 @@ export async function fetchCeneoParts(
   try {
     const all_products = await fetchCeneoPage(search_query);
 
-    const valid_parts: AllegroPart[] = all_products
-      .filter(
-        (p) =>
-          isRelevantProduct(p.title, brand, model_snippet) &&
-          isPriceRealistic(p.price, damage_type),
-      )
+    const prefiltered = all_products.filter(
+      (p) =>
+        isRelevantProduct(p.title, brand, model_snippet) &&
+        isPriceRealistic(p.price, damage_type),
+    );
+
+    const median_filtered = filterPartsByMedianPrice(prefiltered, damage_type);
+
+    const valid_parts: AllegroPart[] = median_filtered
+      .sort((a, b) => a.price - b.price)
       .slice(0, limit)
       .map((p) => ({
         title: p.title,

@@ -19,6 +19,7 @@ import { HeaderActions } from "@/components/HeaderActions/HeaderActions";
 import { StatBar } from "@/components/StatBar/StatBar";
 import type { AppLocale } from "@/i18n/config";
 import styles from "./page.module.scss";
+import { isPartEstimate } from "@/lib/part-utils";
 
 const DATE_LOCALE_MAP: Record<AppLocale, string> = {
   pl: "pl-PL",
@@ -73,6 +74,7 @@ function MetricPaper({
 export default function DeviceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const t = useTranslations("device_detail");
+  const t_repair_stub = useTranslations("repair_stub");
   const tc = useTranslations("common");
   const t_app = useTranslations("app");
   const locale = useLocale() as AppLocale;
@@ -126,6 +128,8 @@ export default function DeviceDetailPage() {
   const liquidity_pct = device.liquidity_score;
   const repairability_pct_bar = repairability_normalized !== null ? Number(repairability_normalized) * 10 : null;
   const profitability_pct_normalized = normalizeProfitability(device.profitability_pct);
+  const is_repairability_stub = !device.ifixit_device_name && repairability_normalized !== null;
+  const has_estimate_parts = device.allegro_parts.some((part) => isPartEstimate(part));
 
   return (
     <Box className="app-shell">
@@ -151,13 +155,17 @@ export default function DeviceDetailPage() {
                     component="img"
                     src={device.photos[active_photo]}
                     alt={device.title}
+                    className={styles.detail_photo_main}
                     sx={{
-                      width: "100%", aspectRatio: "4/3", objectFit: "contain", display: "block",
-                      bgcolor: "background.default", p: 2,
+                      width: "100%",
+                      aspectRatio: "4/3",
+                      objectFit: "contain",
+                      display: "block",
+                      bgcolor: "background.default",
                     }}
                   />
                   {device.photos.length > 1 && (
-                    <Stack direction="row" spacing={1} sx={{ p: 1.5, overflowX: "auto" }}>
+                    <Stack direction="row" spacing={1} className={styles.detail_photo_thumbs_row}>
                       {device.photos.map((photo, i) => (
                         <Button
                           key={i}
@@ -301,6 +309,11 @@ export default function DeviceDetailPage() {
                       value={repairability_pct_bar}
                       display_value={repairability_normalized !== null ? `${repairability_normalized}/10` : "—"}
                     />
+                    {is_repairability_stub && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                        {t("repairability_stub")}
+                      </Typography>
+                    )}
                   </Grid>
                 </Grid>
               </Paper>
@@ -399,14 +412,14 @@ export default function DeviceDetailPage() {
           </Grid>
         </Grid>
 
-        {device.allegro_parts.length > 0 && (
+        {(device.allegro_parts.length > 0 || device.damage_types.length > 0) && (
           <Paper variant="outlined" sx={{ mt: 4, p: { xs: 2, sm: 3 } }}>
             <Stack direction="row" sx={{ mb: 2, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 <Package size={18} style={{ verticalAlign: "middle", marginRight: 8 }} />
                 {t("parts_title")}
               </Typography>
-              {device.allegro_parts.some((p) => p.title.includes("★")) && (
+              {has_estimate_parts && (
                 <Typography variant="caption" color="text.secondary" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
                   <Star size={12} aria-hidden /> — {t("estimate_note")}
                 </Typography>
@@ -414,7 +427,10 @@ export default function DeviceDetailPage() {
             </Stack>
             <Grid container spacing={2}>
               {device.allegro_parts.map((part, i) => {
-                const is_estimate = part.title.includes("★");
+                const is_estimate = isPartEstimate(part);
+                const repair_note_text = is_estimate && part.damage_type
+                  ? t_repair_stub(part.damage_type as never)
+                  : null;
                 return (
                   <Grid key={i} size={{ xs: 12, sm: 6, md: 4 }}>
                     <Paper
@@ -427,21 +443,34 @@ export default function DeviceDetailPage() {
                         display: "flex", gap: 1.5, p: 1.5, textDecoration: "none", color: "inherit",
                         height: "100%", transition: "box-shadow 0.2s",
                         "&:hover": { boxShadow: 2 },
-                        opacity: is_estimate ? 0.85 : 1,
+                        opacity: is_estimate ? 0.9 : 1,
                       }}
                     >
-                      {part.image && (
+                      {part.image ? (
                         <Box
                           component="img"
                           src={part.image}
                           alt={part.title}
                           sx={{ width: 72, height: 72, objectFit: "cover", borderRadius: 1, flexShrink: 0 }}
                         />
+                      ) : (
+                        <Box sx={{
+                          width: 72, height: 72, borderRadius: 1, flexShrink: 0,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          bgcolor: "action.hover", color: "text.secondary",
+                        }}>
+                          <Wrench size={22} aria-hidden />
+                        </Box>
                       )}
                       <Box sx={{ minWidth: 0 }}>
                         <Typography variant="body2" sx={{ fontWeight: 600, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                           {part.title}
                         </Typography>
+                        {repair_note_text && (
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                            {repair_note_text}
+                          </Typography>
+                        )}
                         {part.price !== null && (
                           <Typography variant="body2" color="primary" sx={{ mt: 0.5, fontWeight: 700 }}>
                             {part.price} {part.currency ?? "zł"}

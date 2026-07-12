@@ -3,6 +3,7 @@ import { requireApprovedUser } from "@/server/auth-guards";
 import { getLatestDevicesPage } from "@/server/devices-repository";
 import { getScanStatus } from "@/server/scan-manager";
 import { getUserListingIds } from "@/server/user-listings-repository";
+import { getUserDisplaySettings } from "@/server/user-display-settings-repository";
 import type { DevicesListResponse } from "@/server/types";
 
 export const runtime = "nodejs";
@@ -35,6 +36,7 @@ export async function GET(request: NextRequest) {
   const include_hidden = parseBooleanFlag(searchParams.get("include_hidden"));
 
   const listing_ids = await getUserListingIds(auth_result.user.id);
+  const display_settings = await getUserDisplaySettings(auth_result.user.id);
 
   const [page, scan_status] = await Promise.all([
     getLatestDevicesPage(offset, limit, include_meta, {
@@ -42,6 +44,7 @@ export async function GET(request: NextRequest) {
       favorite_device_ids: listing_ids.favorite_ids,
       favorites_only,
       include_hidden,
+      display_settings,
     }),
     getScanStatus(),
   ]);

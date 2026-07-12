@@ -65,6 +65,24 @@
     color: var(--color-text-faint);
   }
 
+  &_photo_main {
+    padding: 16px;
+
+    @media (max-width: 639px) {
+      padding: 4px;
+    }
+  }
+
+  &_photo_thumbs_row {
+    padding: 12px;
+    overflow-x: auto;
+
+    @media (max-width: 639px) {
+      padding: 8px;
+      gap: 6px !important;
+    }
+  }
+
   &_photo_thumbs {
     display: flex;
     gap: 8px;

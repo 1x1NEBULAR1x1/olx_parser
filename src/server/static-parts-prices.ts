@@ -1,5 +1,6 @@
 // Ориентировочные цены на запчасти в Польше (PLN, 2026)
-// Используются как fallback когда Allegro API/scraper недоступен
+// Используются как fallback когда OLX/Ceneo не нашли реальные объявления.
+// Сборка заглушек с привязкой к модели — repair-parts-stubs.ts.
 
 export interface StaticPartEstimate {
   damage_type: string;
@@ -8,7 +9,7 @@ export interface StaticPartEstimate {
   allegro_search_query: string;
 }
 
-const BRAND_PRICE_MULTIPLIER: Record<string, number> = {
+export const BRAND_PRICE_MULTIPLIER: Record<string, number> = {
   apple: 2.8,
   samsung: 1.5,
   google: 1.6,
@@ -25,7 +26,7 @@ const BRAND_PRICE_MULTIPLIER: Record<string, number> = {
   unknown: 1.0,
 };
 
-const BASE_PART_PRICES: Record<string, number> = {
+export const BASE_PART_PRICES: Record<string, number> = {
   screen: 180,
   battery: 60,
   back_cover: 45,

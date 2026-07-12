@@ -1,4 +1,6 @@
 import type { AllegroPart, AnalyzedDevice } from "./types";
+import { computeMedian } from "./parts-shared";
+import { isPartEstimate } from "./repair-parts-stubs";
 
 interface ProfitabilityInput {
   price_buy: number | null;
@@ -14,25 +16,35 @@ export interface ProfitabilityResult {
   profitability_pct: number | null;
 }
 
-/** Минимальная сумма запчастей по типам повреждения (одна запчасть на тип). */
+/** Сумма по типам повреждения: медиана цены на тип (реальные объявления), не минимум. */
 export function estimatePartsCost(parts: AllegroPart[]): number | null {
   const parts_with_price = parts.filter((p) => p.price !== null && p.price > 0);
   if (parts_with_price.length === 0) return null;
 
   const parts_with_type = parts_with_price.filter((p) => p.damage_type);
   if (parts_with_type.length > 0) {
-    const min_by_type = new Map<string, number>();
-    for (const p of parts_with_type) {
-      const type = p.damage_type!;
-      const existing = min_by_type.get(type);
-      if (existing === undefined || (p.price ?? 0) < existing) {
-        min_by_type.set(type, p.price ?? 0);
+    const parts_by_type = new Map<string, AllegroPart[]>();
+    for (const part of parts_with_type) {
+      const type = part.damage_type!;
+      const bucket = parts_by_type.get(type) ?? [];
+      bucket.push(part);
+      parts_by_type.set(type, bucket);
+    }
+
+    let total = 0;
+    for (const type_parts of parts_by_type.values()) {
+      const real_parts = type_parts.filter((part) => !isPartEstimate(part));
+      const source_parts = real_parts.length > 0 ? real_parts : type_parts;
+      const type_median = computeMedian(source_parts.map((part) => part.price ?? 0));
+      if (type_median !== null) {
+        total += type_median;
       }
     }
-    return Array.from(min_by_type.values()).reduce((sum, v) => sum + v, 0);
+    return total > 0 ? total : null;
   }
 
-  return parts_with_price.reduce((sum, p) => sum + (p.price ?? 0), 0);
+  const total_median = computeMedian(parts_with_price.map((p) => p.price ?? 0));
+  return total_median;
 }
 
 export function calculateProfitability(input: ProfitabilityInput): ProfitabilityResult {

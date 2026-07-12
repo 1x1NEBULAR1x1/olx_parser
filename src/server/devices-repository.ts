@@ -3,6 +3,8 @@ import type { AllegroPart, AnalyzedDevice, DevicesFilterMeta } from "./types";
 import type { Device, Part } from "@prisma/client";
 import { buildDevicesFilterMeta, type DeviceFilterRow } from "./devices-filter-meta";
 import { evaluateJunkStatus, type JunkFilterSettings } from "./junk-filter";
+import { isPlatformExcluded, type PlatformFilterSettings } from "./platform-filter";
+import type { UserDisplaySettingsData } from "./user-display-settings-repository";
 import { createLogger } from "./logger";
 
 const db_log = createLogger("db");
@@ -25,6 +27,7 @@ export interface DevicesPageOptions {
   favorite_device_ids?: number[];
   favorites_only?: boolean;
   include_hidden?: boolean;
+  display_settings?: UserDisplaySettingsData;
 }
 
 function mapDeviceToAnalyzedDevice(
@@ -140,13 +143,55 @@ type DeviceFilterSelectRow = {
 interface DevicesListCache {
   cache_key: string;
   cached_at: string | null;
-  visible_rows: DeviceFilterSelectRow[];
+  filter_rows: DeviceFilterSelectRow[];
 }
 
 let devices_list_cache: DevicesListCache | null = null;
 
 function invalidateDevicesListCache(): void {
   devices_list_cache = null;
+}
+
+function applyUserDisplayFilters(
+  rows: DeviceFilterSelectRow[],
+  display_settings: UserDisplaySettingsData,
+): DeviceFilterSelectRow[] {
+  const junk_settings: JunkFilterSettings = {
+    exclude_junk_listings: display_settings.exclude_junk_listings,
+    junk_min_release_year: display_settings.junk_min_release_year,
+  };
+  const platform_settings: PlatformFilterSettings = {
+    exclude_iphone: display_settings.exclude_iphone,
+    exclude_android: display_settings.exclude_android,
+  };
+
+  return rows.filter((row) => {
+    if (display_settings.exclude_junk_listings) {
+      const junk_result = evaluateJunkStatus(
+        {
+          title: row.title,
+          post_summary: row.post_summary ?? "",
+          brand: row.brand ?? "unknown",
+          model_key: row.model_key ?? "",
+          price_buy: row.price_buy,
+          release_year: row.release_year,
+        },
+        junk_settings,
+      );
+      if (junk_result.is_junk) return false;
+    }
+
+    if (isPlatformExcluded(
+      row.brand ?? "unknown",
+      row.title,
+      row.model_key ?? "",
+      platform_settings,
+    )) {
+      return false;
+    }
+
+    return true;
+  });
 }
 
 function compareProfitabilityRowDesc(a: DeviceFilterSelectRow, b: DeviceFilterSelectRow): number {
@@ -157,42 +202,18 @@ function compareProfitabilityRowDesc(a: DeviceFilterSelectRow, b: DeviceFilterSe
 }
 
 async function getDevicesListCache(): Promise<DevicesListCache> {
-  const [filter_rows, cached_at, app_settings] = await Promise.all([
+  const [filter_rows, cached_at] = await Promise.all([
     prisma.device.findMany({ select: DEVICE_FILTER_SELECT }),
     getCachedAt(),
-    getAppSettings(),
   ]);
 
-  const cache_key = [
-    cached_at ?? "none",
-    app_settings.exclude_junk_listings ? "1" : "0",
-    app_settings.junk_min_release_year,
-  ].join(":");
+  const cache_key = cached_at ?? "none";
 
   if (devices_list_cache?.cache_key === cache_key) {
     return devices_list_cache;
   }
 
-  const junk_settings: JunkFilterSettings = {
-    exclude_junk_listings: app_settings.exclude_junk_listings,
-    junk_min_release_year: app_settings.junk_min_release_year,
-  };
-
-  const visible_rows = app_settings.exclude_junk_listings
-    ? filter_rows.filter((row) => !evaluateJunkStatus(
-      {
-        title: row.title,
-        post_summary: row.post_summary,
-        brand: row.brand,
-        model_key: row.model_key,
-        price_buy: row.price_buy,
-        release_year: row.release_year,
-      },
-      junk_settings,
-    ).is_junk)
-    : filter_rows;
-
-  devices_list_cache = { cache_key, cached_at, visible_rows };
+  devices_list_cache = { cache_key, cached_at, filter_rows };
   return devices_list_cache;
 }
 
@@ -215,9 +236,12 @@ export async function getLatestDevicesPage(
   const hidden_set = new Set(page_options.hidden_device_ids ?? []);
   const favorite_set = new Set(page_options.favorite_device_ids ?? []);
 
-  const { visible_rows: junk_filtered_rows, cached_at } = await getDevicesListCache();
+  const { filter_rows, cached_at } = await getDevicesListCache();
 
-  let visible_rows = junk_filtered_rows;
+  const display_settings = page_options.display_settings;
+  let visible_rows = display_settings
+    ? applyUserDisplayFilters(filter_rows, display_settings)
+    : filter_rows;
   if (!page_options.include_hidden && hidden_set.size > 0) {
     visible_rows = visible_rows.filter((row) => !hidden_set.has(row.id));
   }
@@ -432,13 +456,6 @@ const APP_SETTINGS_ID = 1;
 
 export interface AppSettingsData {
   battery_health_threshold_percent: number;
-  // "Режим исключения мусора" (см. junk-filter.ts) — старые модели,
-  // нереалистичные цены, лоты/сервисные объявления. junk_min_release_year —
-  // ЧАСТЬ этого режима (действует только пока exclude_junk_listings = true).
-  exclude_junk_listings: boolean;
-  junk_min_release_year: number;
-  exclude_iphone: boolean;
-  exclude_android: boolean;
   // 0 = выключено; иначе 15/30/60/180/360 (минуты) — см. scan-scheduler.ts.
   auto_scan_interval_minutes: number;
   // Часы (6-2160) — TTL для ModelCache/PartsCostCache (см. model-cache.ts).
@@ -447,19 +464,11 @@ export interface AppSettingsData {
 
 function toAppSettingsData(settings: {
   battery_health_threshold_percent: number;
-  exclude_junk_listings: boolean;
-  junk_min_release_year: number;
-  exclude_iphone: boolean;
-  exclude_android: boolean;
   auto_scan_interval_minutes: number;
   cache_ttl_hours: number;
 }): AppSettingsData {
   return {
     battery_health_threshold_percent: settings.battery_health_threshold_percent,
-    exclude_junk_listings: settings.exclude_junk_listings,
-    junk_min_release_year: settings.junk_min_release_year,
-    exclude_iphone: settings.exclude_iphone,
-    exclude_android: settings.exclude_android,
     auto_scan_interval_minutes: settings.auto_scan_interval_minutes,
     cache_ttl_hours: settings.cache_ttl_hours,
   };

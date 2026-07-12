@@ -7,8 +7,7 @@ import { useTranslations } from "next-intl";
 import { isSuspiciousListing } from "@/lib/listing-flags";
 import { updateUserListingAction } from "@/lib/api";
 import type { AnalyzedDevice } from "@/lib/api";
-import { useCallback, useRef, useState } from "react";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface DeviceCardProps {
   device: AnalyzedDevice;
@@ -39,7 +38,6 @@ export function DeviceCard({ device, onNavigate, onListingChange }: DeviceCardPr
   const [is_busy, set_is_busy] = useState(false);
   const [active_photo, set_active_photo] = useState(0);
   const gallery_ref = useRef<HTMLDivElement>(null);
-  const is_compact_layout = useMediaQuery("(max-width: 639px)");
 
   const repairability_display =
     device.repairability_score !== null && device.repairability_scale
@@ -75,6 +73,67 @@ export function DeviceCard({ device, onNavigate, onListingChange }: DeviceCardPr
     gallery.scrollTo({ left: gallery.clientWidth * index, behavior: "smooth" });
     set_active_photo(index);
   }
+
+  useEffect(() => {
+    const gallery = gallery_ref.current;
+    if (!gallery || photo_count <= 1) return;
+
+    let origin: { x: number; y: number } | null = null;
+    let gesture_axis: "none" | "x" | "y" = "none";
+    let last_touch_x = 0;
+    const gesture_threshold = 8;
+
+    function resetGesture() {
+      origin = null;
+      gesture_axis = "none";
+    }
+
+    function onTouchStart(event: TouchEvent) {
+      if (event.touches.length !== 1) {
+        resetGesture();
+        return;
+      }
+      const touch = event.touches[0];
+      origin = { x: touch.clientX, y: touch.clientY };
+      last_touch_x = touch.clientX;
+      gesture_axis = "none";
+    }
+
+    function onTouchMove(event: TouchEvent) {
+      if (!gallery || !origin || event.touches.length !== 1) return;
+
+      const touch = event.touches[0];
+      const delta_x = touch.clientX - origin.x;
+      const delta_y = touch.clientY - origin.y;
+
+      if (gesture_axis === "none") {
+        if (Math.abs(delta_x) < gesture_threshold && Math.abs(delta_y) < gesture_threshold) return;
+        gesture_axis = Math.abs(delta_x) > Math.abs(delta_y) ? "x" : "y";
+      }
+
+      if (gesture_axis === "y") return;
+
+      const step = last_touch_x - touch.clientX;
+      last_touch_x = touch.clientX;
+      if (step !== 0) {
+        gallery.scrollLeft += step;
+        syncActivePhoto();
+      }
+      event.preventDefault();
+    }
+
+    gallery.addEventListener("touchstart", onTouchStart, { passive: true });
+    gallery.addEventListener("touchmove", onTouchMove, { passive: false });
+    gallery.addEventListener("touchend", resetGesture, { passive: true });
+    gallery.addEventListener("touchcancel", resetGesture, { passive: true });
+
+    return () => {
+      gallery.removeEventListener("touchstart", onTouchStart);
+      gallery.removeEventListener("touchmove", onTouchMove);
+      gallery.removeEventListener("touchend", resetGesture);
+      gallery.removeEventListener("touchcancel", resetGesture);
+    };
+  }, [photo_count, syncActivePhoto]);
 
   async function handleListingAction(action: "favorite" | "unfavorite" | "hide") {
     if (is_busy) return;
@@ -214,50 +273,56 @@ export function DeviceCard({ device, onNavigate, onListingChange }: DeviceCardPr
               label={t("liquidity")}
               value={device.liquidity_score}
               display_value={device.liquidity_score !== null ? `${Math.round(device.liquidity_score)}` : "—"}
-              compact={is_compact_layout}
+              compact
             />
             <StatBar
               label={t("profitability")}
               value={profitability_bar_value}
               display_value={device.profitability_pct !== null ? `${device.profitability_pct}%` : "—"}
-              compact={is_compact_layout}
+              compact
             />
             <StatBar
               label={t("repairability")}
               value={repairability_bar_value}
               display_value={repairability_display !== null ? `${repairability_display}/10` : "—"}
-              compact={is_compact_layout}
+              compact
             />
           </div>
 
           <div className={styles.card_economics}>
-            <div className={`${styles.card_economics_item} ${styles.card_economics_item_highlight}`}>
-              <span className={styles.card_economics_label}>{t("profit")}</span>
-              <span className={getProfitValueClass(device.profit_estimate)}>
-                {device.profit_estimate !== null ? `${device.profit_estimate} zł` : "—"}
-              </span>
-            </div>
-            <div className={styles.card_economics_item}>
-              <span className={styles.card_economics_label}>{t("repair_cost")}</span>
-              <span className={styles.card_economics_value}>
-                {device.parts_cost_estimate !== null ? `~${device.parts_cost_estimate} zł` : "—"}
-              </span>
+            <div className={styles.card_economics_row}>
+              <div className={styles.card_economics_col}>
+                <span className={styles.card_economics_label}>{t("profit")}</span>
+                <span className={getProfitValueClass(device.profit_estimate)}>
+                  {device.profit_estimate !== null ? `${device.profit_estimate} zł` : "—"}
+                </span>
+              </div>
+              <div className={`${styles.card_economics_col} ${styles.card_economics_col_end}`}>
+                <span className={styles.card_economics_label}>{t("repair_cost")}</span>
+                <span className={styles.card_economics_value}>
+                  {device.parts_cost_estimate !== null ? `~${device.parts_cost_estimate} zł` : "—"}
+                </span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <div className={styles.card_footer}>
-        <div className={styles.card_price_block}>
-          <div className={styles.card_price}>
-            {device.price_buy !== null ? `${device.price_buy} zł` : "—"}
+        <div className={styles.card_price_row}>
+          <div className={styles.card_price_col}>
+            <div className={styles.card_price}>
+              {device.price_buy !== null ? `${device.price_buy} zł` : "—"}
+            </div>
+            {device.is_negotiable && (
+              <span className={styles.card_price_negotiable}>{t("negotiable")}</span>
+            )}
           </div>
-          {device.is_negotiable && (
-            <span className={styles.card_price_negotiable}>{t("negotiable")}</span>
-          )}
           {device.city && (
-            <div className={styles.card_location}>
-              <MapPin size={12} aria-hidden /> {device.city}
+            <div className={styles.card_location_col}>
+              <div className={styles.card_location}>
+                <MapPin size={12} aria-hidden /> {device.city}
+              </div>
             </div>
           )}
         </div>

@@ -193,10 +193,13 @@ t("common.loading")  // → "Ładowanie..."
 ### Паттерн AppSettings (настройки приложения)
 Синглтон-модель Prisma (`AppSettings`, фиксированный `id=1`) — `getAppSettings()`/`updateAppSettings()` в `devices-repository.ts` используют `upsert`, поэтому строка создаётся лениво при первом обращении (без seed-скрипта). `runFullPipeline()` читает настройки ОДИН раз в начале скана — изменение настройки применяется только к СЛЕДУЮЩЕМУ запуску, не к уже сохранённым данным. Добавляя новую настройку: 1) поле в `AppSettings` + миграция, 2) `AppSettingsData` в `devices-repository.ts`, 3) прочитать в `runFullPipeline()`/там, где нужно, 4) прокинуть в UI `/settings` + `lib/api.ts#AppSettings`.
 
-### Паттерн "режим исключения мусора" (`junk-filter.ts`)
-`evaluateJunkStatus(input, settings)` — чистая функция без побочных эффектов, вызывается ДВАЖДЫ в `pipeline.ts#analyzeSingleListing`: сразу после brand/model_key/release_year (до сетевых запросов — реальная оптимизация, а не только фильтрация: явный мусор отсекается БЕЗ похода в iFixit/за запчастями) и повторно после получения `post_summary` (ловит лоты/сервисные объявления, упомянутые только в описании). `analyzeSingleListing` возвращает `null` для мусора — `runFullPipeline` фильтрует `null` через type guard ПЕРЕД `finalizeDevices`, поэтому мусор не попадает ни в медиану цены, ни в сохранённые устройства, ни в `devices_count`.
+### Паттерн UserDisplaySettings (персональные фильтры ленты)
+Модель Prisma `UserDisplaySettings` (1:1 с `User`) — `getUserDisplaySettings(user_id)`/`updateUserDisplaySettings()` в `user-display-settings-repository.ts` (upsert по `user_id`). Поля: `exclude_junk_listings`, `junk_min_release_year`, `exclude_iphone`, `exclude_android`. Применяются в `getLatestDevicesPage()` через `applyUserDisplayFilters()` — **на лету**, без перескана. Скан (`runFullPipeline`) сохраняет ВСЕ объявления; мусор/платформы не отсекаются в `analyzeSingleListing`.
 
-**Правило:** `junk_min_release_year` — ЧАСТЬ этого режима (не отдельная настройка): проверяется внутри той же функции и того же тоггла `exclude_junk_listings`, UI на `/settings` должен визуально показывать год-слайдер как вложенный в секцию "мусор" (см. `settings/page.tsx` — слайдер `opacity-40`+`disabled` когда тоггл выключен).
+**Правило:** `junk_min_release_year` — ЧАСТЬ режима `exclude_junk_listings` (см. `junk-filter.ts`). UI `/settings` — секция "Ваша лента" (доступна всем approved), отдельная кнопка "Сохранить фильтры". Глобальные настройки (`AppSettings`: battery, auto_scan, cache_ttl) — только admin, секция "Система".
+
+### Паттерн "режим исключения мусора" (`junk-filter.ts`)
+`evaluateJunkStatus(input, settings)` — чистая функция, вызывается в `devices-repository.ts#applyUserDisplayFilters` при отдаче ленты (если у пользователя включён `exclude_junk_listings`). Скан больше не отбрасывает мусор на этапе анализа.
 
 ### Паттерн дедупликации model_key (`model-normalizer.ts` + `model-key-clusterer.ts`)
 Два независимых уровня защиты от дублей одной модели с разным написанием:
@@ -274,7 +277,7 @@ t("common.loading")  // → "Ładowanie..."
 | GET | /api/devices/:id | Одно устройство по OLX id |
 | GET | /api/scan/status | Статус сканирования (те же поля прогресса, что и /api/devices) |
 | POST | /api/scan/start | Запустить новое сканирование (409, если уже идёт) |
-| GET/PATCH | /api/settings | `AppSettings`: `battery_health_threshold_percent`, `exclude_junk_listings`, `junk_min_release_year`, `auto_scan_interval_minutes`, `cache_ttl_hours` (PATCH пересоздаёт cron-задачу при изменении интервала) |
+| GET/PATCH | /api/settings | Объединённый ответ: `AppSettings` (battery, auto_scan, cache_ttl — PATCH admin-only) + `UserDisplaySettings` (junk/iphone/android — PATCH любой approved user) + `is_admin` |
 | GET/PATCH | /api/notification-settings | `NotificationSettings` (+ вычисляемый `telegram_configured` в GET, не персистится) |
 | GET/PATCH/DELETE | /api/notifications | Список последних уведомлений / отметить все прочитанными / очистить всё |
 | GET | /api/notifications/unread-count | `{ count }` непрочитанных — для бейджа `NotificationBell` |

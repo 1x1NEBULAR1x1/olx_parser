@@ -5,6 +5,7 @@ export interface AllegroPart {
   url: string;
   image: string | null;
   damage_type?: string;
+  is_estimate?: boolean;
 }
 
 export interface AnalyzedDevice {

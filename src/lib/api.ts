@@ -5,6 +5,7 @@ export interface AllegroPart {
   url: string;
   image: string | null;
   damage_type?: string;
+  is_estimate?: boolean;
 }
 
 export interface AnalyzedDevice {
@@ -172,21 +173,28 @@ export async function startScan(): Promise<{ message: string }> {
 
 export interface AppSettings {
   battery_health_threshold_percent: number;
-  exclude_junk_listings: boolean;
-  junk_min_release_year: number;
-  exclude_iphone: boolean;
-  exclude_android: boolean;
   auto_scan_interval_minutes: number;
   cache_ttl_hours: number;
 }
 
-export async function fetchSettings(): Promise<AppSettings> {
-  const res = await fetch(`${API_BASE}/settings`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json() as Promise<AppSettings>;
+export interface UserDisplaySettings {
+  exclude_junk_listings: boolean;
+  junk_min_release_year: number;
+  exclude_iphone: boolean;
+  exclude_android: boolean;
 }
 
-export async function updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
+export interface SettingsResponse extends AppSettings, UserDisplaySettings {
+  is_admin: boolean;
+}
+
+export async function fetchSettings(): Promise<SettingsResponse> {
+  const res = await fetch(`${API_BASE}/settings`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<SettingsResponse>;
+}
+
+export async function updateSettings(patch: Partial<SettingsResponse>): Promise<SettingsResponse> {
   const res = await fetch(`${API_BASE}/settings`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -196,7 +204,7 @@ export async function updateSettings(patch: Partial<AppSettings>): Promise<AppSe
     const body = await res.json() as { error?: string };
     throw new Error(body.error ?? `HTTP ${res.status}`);
   }
-  return res.json() as Promise<AppSettings>;
+  return res.json() as Promise<SettingsResponse>;
 }
 
 export interface NotificationSettings {
