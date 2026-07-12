@@ -53,6 +53,9 @@ warn_low_memory
 echo "==> Проверка уязвимостей (уровень high+)..."
 npm run audit:check
 
+echo "==> npmrc для сервера (optional=false — без нативных swc/lightningcss)..."
+cp deploy/npmrc.server .npmrc
+
 echo "==> Установка зависимостей (npm ci)..."
 if [[ -d node_modules ]] && ! node -e "require('better-sqlite3')" 2>/dev/null; then
   echo "    Чужие/битые бинарники — полная переустановка node_modules..."

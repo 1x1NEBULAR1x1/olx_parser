@@ -31,6 +31,7 @@ check_path() {
 }
 
 check_path "better-sqlite3 .node" "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+check_path "НЕТ swc-linux (хорошо)" "node_modules/@next/swc-linux-x64-gnu"
 check_path "@next/swc-wasm-nodejs" "node_modules/@next/swc-wasm-nodejs/wasm.js"
 check_path "@tailwindcss/oxide-wasm32-wasi" "node_modules/@tailwindcss/oxide-wasm32-wasi"
 check_path "lightningcss-wasm" "node_modules/lightningcss-wasm/lightningcss_node.wasm"
@@ -68,8 +69,9 @@ if (( mem_mb < 2048 && swap_kb < 512 )); then
   echo "  • RAM ${mem_mb}MB, swap ${swap_kb}MB — добавьте swap 2GB перед next build"
 fi
 
-if [[ ! -f node_modules/@next/swc-wasm-nodejs/wasm.js ]]; then
-  echo "  • Запустите: node scripts/setup-linux-build.mjs"
+if [[ -d node_modules/@next/swc-linux-x64-gnu ]]; then
+  echo "  • ОШИБКА: swc-linux установлен — npm ci снова подтянул native optional deps"
+  echo "    cp deploy/npmrc.server .npmrc && rm -rf node_modules && npm ci"
 fi
 
 echo "  • Сборка: npm run build  (или ./deploy/build.sh)"

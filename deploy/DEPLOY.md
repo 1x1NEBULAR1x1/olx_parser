@@ -116,11 +116,12 @@ sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
 sudo mkswap /swapfile && sudo swapon /swapfile
 
 rm -rf node_modules .next
+cp deploy/npmrc.server .npmrc
 npm ci
 npm rebuild better-sqlite3 --build-from-source
 
-# подготовка WASM (SWC + lightningcss + Tailwind oxide)
-node scripts/setup-linux-build.mjs
+# WASM toolchain (удаляет swc-linux если npm ci их подтянул)
+node scripts/strip-native-binaries.mjs
 ./deploy/diagnose-native.sh
 
 npm run build
