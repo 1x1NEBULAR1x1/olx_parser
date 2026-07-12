@@ -1,0 +1,50 @@
+{
+  "name": "olx-parser",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 8080",
+    "build": "prisma generate && next build",
+    "start": "next start -H ${HOSTNAME:-127.0.0.1} -p ${PORT:-8080}",
+    "start:public": "next start -H 0.0.0.0 -p 8080",
+    "postinstall": "prisma generate",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "audit:check": "npm audit --audit-level=high",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@auth/prisma-adapter": "^2.11.2",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^9.2.0",
+    "@prisma/adapter-better-sqlite3": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "better-sqlite3": "^12.11.1",
+    "cheerio": "^1.2.0",
+    "lucide-react": "^1.24.0",
+    "next": "^15.5.20",
+    "next-auth": "^4.24.14",
+    "next-intl": "^4.13.2",
+    "node-cache": "^5.1.2",
+    "node-cron": "^4.6.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "sass": "^1.101.0",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@tailwindcss/postcss": "^4.3.2",
+    "@types/node": "^26.1.1",
+    "@types/node-cron": "^3.0.11",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "dotenv": "^17.4.2",
+    "prisma": "^7.8.0",
+    "tailwindcss": "^4.3.2",
+    "typescript": "^5.9.3"
+  }
+}

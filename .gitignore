@@ -1,0 +1,14 @@
+.env
+.env.local
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+.next/
+next-env.d.ts
+tsconfig.tsbuildinfo
+prisma/*.db
+prisma/*.db-journal
+test-results/
+playwright-report/

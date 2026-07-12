@@ -1,0 +1,46 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+
+  &_screen { background: #dbeafe; color: #1d4ed8; }
+  &_battery { background: #dcfce7; color: #15803d; }
+  &_back_cover { background: #f3e8ff; color: #7e22ce; }
+  &_buttons { background: #fef3c7; color: #92400e; }
+  &_charging_port { background: #ffedd5; color: #c2410c; }
+  &_camera { background: #fce7f3; color: #be185d; }
+  &_speaker { background: #e0f2fe; color: #0369a1; }
+  &_microphone { background: #f0fdf4; color: #166534; }
+  &_body { background: var(--color-surface-hover); color: var(--color-text-secondary); }
+  &_frame { background: #e0e7ff; color: #3730a3; }
+  &_locked { background: #fee2e2; color: #b91c1c; }
+  &_water_damage { background: #fee2e2; color: #b91c1c; }
+  &_software { background: #fef9c3; color: #a16207; }
+  &_sim_slot { background: #cffafe; color: #0e7490; }
+  &_unknown { background: var(--color-surface-hover); color: var(--color-text-muted); }
+
+  // Насыщенные светлые фоны из светлой темы плохо читаются на тёмном фоне —
+  // затемняем фон и повышаем яркость текста конкретно под .dark, вместо
+  // перевода этих декоративных цветов на семантические переменные (тут важно
+  // сохранить именно "цвет по типу повреждения", а не единый акцент).
+  :global(.dark) & {
+    &_screen { background: #1e2f52; color: #93c5fd; }
+    &_battery { background: #123321; color: #86efac; }
+    &_back_cover { background: #2e1f4d; color: #d8b4fe; }
+    &_buttons { background: #3a2a0d; color: #fde68a; }
+    &_charging_port { background: #3a230f; color: #fdba74; }
+    &_camera { background: #3d1a2c; color: #f9a8d4; }
+    &_speaker { background: #0f2e42; color: #7dd3fc; }
+    &_microphone { background: #0f2e1c; color: #86efac; }
+    &_frame { background: #1e1b4b; color: #a5b4fc; }
+    &_locked { background: #3f1515; color: #fca5a5; }
+    &_water_damage { background: #3f1515; color: #fca5a5; }
+    &_software { background: #3a2f0a; color: #fde047; }
+    &_sim_slot { background: #0c2d36; color: #67e8f9; }
+  }
+}

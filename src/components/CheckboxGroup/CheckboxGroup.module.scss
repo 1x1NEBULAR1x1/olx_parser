@@ -1,0 +1,84 @@
+.checkbox_group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+
+  &_empty {
+    font-size: 12px;
+    color: var(--color-text-faint);
+    padding: 4px 0;
+  }
+
+  &_item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background-color: var(--color-surface-hover);
+    }
+  }
+
+  &_input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+
+    &:checked + .checkbox_group_box {
+      background-color: var(--color-primary-hover);
+      border-color: var(--color-primary-hover);
+
+      &::after {
+        opacity: 1;
+      }
+    }
+  }
+
+  &_box {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border-radius: 5px;
+    border: 1.5px solid var(--color-border);
+    background-color: var(--color-surface);
+    position: relative;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+
+    &::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.1s ease;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.5L6.5 11.5L12.5 4.5' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/10px no-repeat;
+    }
+  }
+
+  &_label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &_count {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--color-text-faint);
+    background-color: var(--color-surface-hover);
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-weight: 600;
+  }
+}

@@ -1,0 +1,297 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model ScanRun {
+  id                 String    @id @default(cuid())
+  status             String    // "running" | "completed" | "failed"
+  started_at         DateTime  @default(now())
+  finished_at        DateTime?
+  devices_count      Int       @default(0)
+  error_message      String?
+  // Прогресс по реальным этапам пайплайна — для индикатора загрузки в %.
+  stage              String?   // "fetching_listings" | "analyzing" | "saving"
+  total_listings     Int?
+  processed_listings Int       @default(0)
+  devices            Device[]
+
+  @@index([status])
+  @@index([started_at])
+}
+
+model Device {
+  id                   Int      @id            // OLX listing id, переиспользуется как PK
+  title                String
+  olx_url              String
+  price_buy            Float?
+  price_currency       String?
+  is_negotiable        Boolean?
+  brand                String
+  model_query          String
+  // Канонический ключ модели (для группировки цен и чекбокс-фильтра) и
+  // человекочитаемая подпись — см. model-normalizer.ts. model_query остаётся
+  // как есть (почти полный заголовок) для обратной совместимости и поиска.
+  model_key            String                  @default("")
+  model_label          String                  @default("")
+  // Линейка модели (Galaxy S, iPhone Pro, Redmi Note…) — для сортировки/фильтра
+  model_line           String                  @default("")
+  model_line_label     String                  @default("")
+  photos               String                  // JSON string[]
+  city                 String?
+  region               String?
+  listing_created_at   DateTime
+  release_year         Int?
+  has_box              Boolean  @default(false)
+  battery_health_percent Int?
+  // Объём встроенной памяти (GB), извлечённый из заголовка/описания OLX
+  storage_gb             Int?
+
+  // Продавец (парсится со страницы объявления OLX)
+  seller_name          String?
+  seller_ads_count     Int?
+  seller_member_since  String?
+
+  damage_types         String                  // JSON string[]
+  post_summary         String
+
+  repairability_score  Float?
+  repairability_scale  Float?
+  ifixit_device_name   String?
+  ifixit_url           String?
+
+  allegro_search_url   String?
+  parts_cost_estimate  Float?
+
+  market_sell_price    Float?
+  // "model_median" — медиана цен objявлений той же model_key без повреждений
+  // в этом же скане; "brand_estimate" — fallback-эвристика по бренду, когда
+  // сравнимых объявлений оказалось меньше MIN_COMPARABLE_LISTINGS_FOR_MEDIAN.
+  market_sell_price_source String?
+  profit_estimate      Float?
+  profitability_pct    Float?
+
+  liquidity_score      Float?
+  liquidity_label      String?
+
+  last_analyzed_at     DateTime
+  scan_id              String
+  scan                 ScanRun  @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  parts                Part[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([brand])
+  @@index([profitability_pct])
+  @@index([scan_id])
+  @@index([model_key])
+  @@index([model_line])
+}
+
+// Синглтон (единственная строка, id фиксирован = 1) — настройки приложения,
+// применяются к следующему запуску pipeline (не влияют "на лету" на уже
+// сохранённые результаты предыдущего скана).
+model AppSettings {
+  id                               Int      @id @default(1)
+  battery_health_threshold_percent Int      @default(80)
+  // "Режим исключения мусора" — старые модели (release_year < junk_min_release_year),
+  // нереалистичные цены, лоты/сервисные объявления (см. junk-filter.ts). Включён
+  // по умолчанию — фильтр минимального года выпуска теперь ЧАСТЬ этого режима,
+  // а не отдельная независимая настройка.
+  exclude_junk_listings            Boolean  @default(true)
+  junk_min_release_year            Int      @default(2017)
+  // Исключить iPhone (brand=apple) / Android (все остальные известные бренды)
+  exclude_iphone                   Boolean  @default(false)
+  exclude_android                  Boolean  @default(false)
+  // Авто-актуализация: период (мин) для периодического авто-скана через
+  // node-cron (см. scan-scheduler.ts). 0 = выключено (только автозапуск при
+  // старте сервера, как раньше).
+  auto_scan_interval_minutes       Int      @default(0)
+  // TTL (часы) для БД-кеша ModelCache/PartsCostCache — см. model-cache.ts.
+  // Диапазон 6ч-2160ч (~3 мес), задаётся слайдером в /settings.
+  cache_ttl_hours                  Int      @default(72)
+  updatedAt                        DateTime @updatedAt
+}
+
+model Part {
+  id          Int     @id @default(autoincrement())
+  title       String
+  price       Float?
+  currency    String?
+  url         String
+  image       String?
+  damage_type String?
+
+  device_id   Int
+  device      Device  @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@index([device_id])
+}
+
+// L2-кеш (переживает рестарт процесса, в отличие от in-memory node-cache в
+// cache.ts) свойств модели устройства, не зависящих от конкретного
+// повреждения объявления: ремонтопригодность (iFixit) и кросс-скановый
+// "якорь" рыночной цены — используется как промежуточный источник
+// market_sell_price между медианой ТЕКУЩЕГО скана и грубым brand-fallback
+// (см. brand-extractor.ts#estimateMarketSellPrice).
+model ModelCache {
+  id                   Int      @id @default(autoincrement())
+  brand                String
+  model_key            String
+  repairability_score  Float?
+  repairability_scale  Float?
+  ifixit_device_name   String?
+  ifixit_url           String?
+  avg_market_price     Float?
+  fetched_at           DateTime @default(now())
+  expires_at           DateTime
+
+  @@unique([brand, model_key])
+  @@index([expires_at])
+}
+
+// L2-кеш стоимости запчастей — отдельно от ModelCache, т.к. набор запчастей
+// зависит от конкретной комбинации повреждений (damage_signature), а не
+// только от модели устройства.
+model PartsCostCache {
+  id                Int      @id @default(autoincrement())
+  brand             String
+  model_key         String
+  damage_signature  String   @default("")
+  parts_cost_estimate Float?
+  allegro_search_url String?
+  parts_json        String?
+  fetched_at        DateTime @default(now())
+  expires_at        DateTime
+
+  @@unique([brand, model_key, damage_signature])
+  @@index([expires_at])
+}
+
+// Синглтон (id=1) — настройки уведомлений о "хороших позициях". Списки
+// брендов/моделей/регионов хранятся как JSON-массивы строк (пустой массив =
+// "любой", без ограничения).
+model NotificationSettings {
+  id                    Int      @id @default(1)
+  enabled               Boolean  @default(false)
+  brands                String   @default("[]")
+  model_keys            String   @default("[]")
+  min_profitability_pct Float?
+  max_profitability_pct Float?
+  min_price             Float?
+  max_price             Float?
+  regions               String   @default("[]")
+  updatedAt             DateTime @updatedAt
+}
+
+// Денормализованный снимок объявления на момент уведомления — БЕЗ связи с
+// Device, потому что таблица Device полностью перезаписывается на каждом
+// скане (saveDevices#deleteMany), а уведомление должно переживать это.
+model Notification {
+  id                Int      @id @default(autoincrement())
+  olx_listing_id    Int
+  title             String
+  olx_url           String
+  price_buy         Float?
+  profitability_pct Float?
+  market_sell_price Float?
+  city              String?
+  region            String?
+  photo_url         String?
+  is_read           Boolean  @default(false)
+  created_at        DateTime @default(now())
+
+  @@index([is_read])
+  @@index([created_at])
+}
+
+// Дедупликация уведомлений между сканами — одно и то же объявление (стабильный
+// OLX id) не должно уведомляться повторно на каждом следующем скане.
+model NotifiedListing {
+  olx_listing_id Int      @id
+  notified_at    DateTime @default(now())
+}
+
+// --- NextAuth + пользователи ---
+
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  image          String?
+  role           String    @default("user") // "user" | "admin"
+  is_approved    Boolean   @default(false)
+  accounts       Account[]
+  sessions       Session[]
+  favorites      FavoriteDevice[]
+  hidden_devices HiddenDevice[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([is_approved])
+  @@index([role])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model FavoriteDevice {
+  id         Int      @id @default(autoincrement())
+  user_id    String
+  device_id  Int
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, device_id])
+  @@index([user_id])
+}
+
+model HiddenDevice {
+  id         Int      @id @default(autoincrement())
+  user_id    String
+  device_id  Int
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, device_id])
+  @@index([user_id])
+}

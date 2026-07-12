@@ -1,0 +1,259 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+// Семантические токены — единый источник для SCSS-модулей и Tailwind arbitrary values.
+// Тёмная тема: чистый чёрный (x-kom / HyperPC), акцент — тёплый оранжевый.
+:root {
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --color-bg: #f4f4f5;
+  --color-surface: #ffffff;
+  --color-surface-muted: #fafafa;
+  --color-surface-hover: #f0f0f1;
+  --color-surface-elevated: #ffffff;
+  --color-border: #e4e4e7;
+  --color-border-subtle: #f0f0f1;
+
+  --color-text: #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-muted: #71717a;
+  --color-text-faint: #a1a1aa;
+
+  --color-primary: #e54d00;
+  --color-primary-hover: #ff5a1f;
+  --color-primary-text: #e54d00;
+  --color-primary-bg: #fff4ed;
+  --color-primary-bg-strong: #ffedd5;
+  --color-primary-border: #fdba74;
+  --color-primary-border-strong: #fb923c;
+
+  --color-positive: #16a34a;
+  --color-positive-bg: #dcfce7;
+  --color-negative: #dc2626;
+  --color-negative-hover: #ef4444;
+  --color-negative-bg: #fef2f2;
+  --color-warning: #d97706;
+  --color-warning-strong: #92400e;
+  --color-warning-bg: #fef3c7;
+  --color-warning-bg-strong: #fffbeb;
+  --color-warning-border: #fde68a;
+
+  --color-shadow: rgba(0, 0, 0, 0.08);
+  --color-glow: rgba(229, 77, 0, 0.12);
+}
+
+.dark {
+  --color-bg: #0a0a0a;
+  --color-surface: #141414;
+  --color-surface-muted: #0f0f0f;
+  --color-surface-hover: #1c1c1c;
+  --color-surface-elevated: #1f1f1f;
+  --color-border: #2a2a2a;
+  --color-border-subtle: #1e1e1e;
+
+  --color-text: #f5f5f5;
+  --color-text-secondary: #c4c4c4;
+  --color-text-muted: #8a8a8a;
+  --color-text-faint: #5c5c5c;
+
+  --color-primary: #ff5a1f;
+  --color-primary-hover: #ff7139;
+  --color-primary-text: #ff7139;
+  --color-primary-bg: #1a1008;
+  --color-primary-bg-strong: #261508;
+  --color-primary-border: #4a2a12;
+  --color-primary-border-strong: #6b3a18;
+
+  --color-positive: #3ddc84;
+  --color-positive-bg: #0d1f14;
+  --color-negative: #ff6b6b;
+  --color-negative-hover: #ff8787;
+  --color-negative-bg: #2a1212;
+  --color-warning: #fbbf24;
+  --color-warning-strong: #fde68a;
+  --color-warning-bg: #2a2008;
+  --color-warning-bg-strong: #1f1806;
+  --color-warning-border: #5c4510;
+
+  --color-shadow: rgba(0, 0, 0, 0.55);
+  --color-glow: rgba(255, 90, 31, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  overflow-x: hidden;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  transition: background-color 0.2s ease, color 0.2s ease;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+// Утилиты разметки — вместо хардкода slate/indigo в страницах
+.app-shell {
+  min-height: 100vh;
+  background: var(--color-bg);
+}
+
+.app-header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(12px);
+
+  .dark & {
+    background: rgba(20, 20, 20, 0.92);
+  }
+}
+
+.app-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+}
+
+.app-text {
+  color: var(--color-text);
+}
+
+.app-text-muted {
+  color: var(--color-text-muted);
+}
+
+.app-text-faint {
+  color: var(--color-text-faint);
+}
+
+.app-accent {
+  color: var(--color-primary);
+}
+
+.app-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.375rem 0.75rem;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-primary);
+    border-color: var(--color-primary-border);
+    background: var(--color-surface-hover);
+  }
+}
+
+.app-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  transition: color 0.15s, border-color 0.15s;
+  text-decoration: none;
+
+  &:hover {
+    color: var(--color-primary);
+    border-color: var(--color-primary-border);
+  }
+}
+
+.app-select {
+  font-size: 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.375rem 0.75rem;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  outline: none;
+  max-width: 100%;
+
+  &:focus {
+    border-color: var(--color-primary);
+  }
+}
+
+@media (max-width: 639px) {
+  .app-btn-ghost {
+    font-size: 0.8125rem;
+    padding: 0.3125rem 0.625rem;
+  }
+
+  .app-btn-icon {
+    width: 2rem;
+    height: 2rem;
+  }
+}
+
+.app-btn-primary {
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0.625rem 1.25rem;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover:not(:disabled) {
+    background: var(--color-primary-hover);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.app-link {
+  color: var(--color-text);
+  font-weight: 700;
+  text-decoration: none;
+  transition: color 0.15s;
+
+  &:hover {
+    color: var(--color-primary);
+  }
+}
+
+.app-link-muted {
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+
+  &:hover {
+    color: var(--color-primary);
+  }
+}
+
+.app-divider {
+  color: var(--color-border);
+}

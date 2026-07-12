@@ -1,0 +1,54 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
+import { Monitor, Moon, Sun } from "lucide-react";
+import styles from "./ThemeSwitcher.module.scss";
+import { applyTheme, THEME_STORAGE_KEY, type ThemeChoice } from "@/lib/theme";
+
+const THEME_ICONS: Record<ThemeChoice, typeof Sun> = {
+  light: Sun,
+  dark: Moon,
+  system: Monitor,
+};
+
+const THEME_ORDER: ThemeChoice[] = ["light", "dark", "system"];
+
+export function ThemeSwitcher() {
+  const t = useTranslations("theme");
+  const [choice, set_choice] = useState<ThemeChoice>("system");
+
+  useEffect(() => {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY) as ThemeChoice | null;
+    if (stored) set_choice(stored);
+  }, []);
+
+  function selectTheme(next_choice: ThemeChoice) {
+    set_choice(next_choice);
+    localStorage.setItem(THEME_STORAGE_KEY, next_choice);
+    applyTheme(next_choice);
+  }
+
+  return (
+    <div className={styles.switcher} role="group" aria-label={t("label")}>
+      {THEME_ORDER.map((theme_choice) => {
+        const Icon = THEME_ICONS[theme_choice];
+        return (
+          <button
+            key={theme_choice}
+            type="button"
+            className={[
+              styles.switcher_btn,
+              theme_choice === choice ? styles.switcher_btn_active : "",
+            ].join(" ")}
+            onClick={() => selectTheme(theme_choice)}
+            aria-pressed={theme_choice === choice}
+            title={t(theme_choice)}
+          >
+            <Icon size={16} aria-hidden />
+          </button>
+        );
+      })}
+    </div>
+  );
+}

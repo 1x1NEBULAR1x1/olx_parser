@@ -1,0 +1,50 @@
+.stat_bar {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  &_top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  &_label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  &_value {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text);
+    flex-shrink: 0;
+  }
+
+  &_track {
+    position: relative;
+    height: 4px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--color-border-subtle);
+  }
+
+  // Градиент шкалы фиксированный: чёрный → красный → жёлтый → зелёный.
+  &_gradient {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, #1a1a1a 0%, #ef4444 25%, #f59e0b 55%, #22c55e 100%);
+  }
+
+  &_overlay {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--color-surface-muted);
+  }
+}

@@ -1,0 +1,10 @@
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+
+  @media (min-width: 640px) {
+    gap: 8px;
+  }
+}
