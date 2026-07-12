@@ -108,18 +108,29 @@ chmod +x deploy/diagnose-native.sh
 
 ```bash
 cd /var/www/smartflip
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs build-essential python3
+nvm use 22   # или системный Node >=22
+node -v      # v22.x
+
+# swap если RAM < 2GB
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
 
 rm -rf node_modules .next
 npm ci
 npm rebuild better-sqlite3 --build-from-source
 
-# если next build всё ещё падает:
-SMARTFLIP_SWC_WASM=1 ./deploy/build.sh
+# подготовка WASM (SWC + lightningcss + Tailwind oxide)
+node scripts/setup-linux-build.mjs
+./deploy/diagnose-native.sh
+
+npm run build
+# или: ./deploy/build.sh
 
 sudo systemctl restart smartflip
 ```
+
+**Важно:** не вызывайте `node -e "require('@next/swc-linux-x64-gnu')"` — на проблемных VPS это
+даёт Bus error. Диагностика: `./deploy/diagnose-native.sh` (безопасная, без native .node).
 
 Если при старте видите `Could not locate the bindings file` для `better_sqlite3.node`:
 

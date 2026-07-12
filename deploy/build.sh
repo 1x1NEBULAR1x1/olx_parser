@@ -22,41 +22,24 @@ require_node_version() {
   local major
   major="$(node -p "process.versions.node.split('.')[0]")"
   if (( major < 22 )); then
-    echo "ERROR: Node $(node -v) — проект требует Node >=22 (Prisma 7.8 / @prisma/streams-local)."
-    echo "Обновите:"
-    echo "  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
-    echo "  sudo apt install -y nodejs"
+    echo "ERROR: Node $(node -v) — проект требует Node >=22."
+    echo "  nvm install 22 && nvm use 22"
     exit 1
   fi
 }
 
 warn_low_memory() {
-  local mem_mb swap_active
+  local mem_mb swap_kb
   mem_mb="$(free -m | awk '/^Mem:/{print $2}')"
-  swap_active="$(swapon --show 2>/dev/null | wc -l)"
-  if (( mem_mb < 1800 && swap_active < 2 )); then
-    echo "WARN: RAM ${mem_mb}MB без swap — next build может падать с Bus error / Killed."
-    echo "      Добавьте swap 2GB (см. deploy/DEPLOY.md) или соберите на машине с большим RAM."
+  swap_kb="$(free -m | awk '/^Swap:/{print $2}')"
+  if (( mem_mb < 2048 && swap_kb < 512 )); then
+    echo "WARN: RAM ${mem_mb}MB, swap ${swap_kb}MB — next build может упасть."
+    echo "      Рекомендуется swap 2GB (см. deploy/DEPLOY.md)."
   fi
 }
 
 verify_better_sqlite3() {
   node -e "require('better-sqlite3'); console.log('better-sqlite3 OK')"
-}
-
-swc_native_ok() {
-  node -e "require('@next/swc-linux-x64-gnu')" 2>/dev/null
-}
-
-enable_swc_wasm_fallback() {
-  echo "==> SWC WASM fallback (нативный @next/swc-linux-x64-gnu не работает на этом VPS)..."
-  npm install "@next/swc-wasm-nodejs@15.5.20" --no-save --no-fund --no-audit
-  rm -rf \
-    node_modules/@next/swc-linux-x64-gnu \
-    node_modules/@next/swc-linux-x64-musl \
-    node_modules/@next/swc-linux-arm64-gnu \
-    node_modules/@next/swc-linux-arm64-musl \
-    2>/dev/null || true
 }
 
 echo "==> Проверка Node.js (>=22)..."
@@ -77,25 +60,18 @@ if [[ -d node_modules ]] && ! node -e "require('better-sqlite3')" 2>/dev/null; t
 fi
 npm ci
 
-echo "==> Сборка нативного модуля better-sqlite3 под $(node -p "process.platform + '-' + process.arch")..."
+echo "==> Сборка better-sqlite3..."
 npm rebuild better-sqlite3 --build-from-source
-
-echo "==> Проверка загрузки better-sqlite3..."
 verify_better_sqlite3
 
-if [[ "${SMARTFLIP_SWC_WASM:-}" == "1" ]]; then
-  enable_swc_wasm_fallback
-elif ! swc_native_ok; then
-  echo "WARN: нативный SWC не загружается — переключаемся на WASM..."
-  enable_swc_wasm_fallback
-fi
+echo "==> Подготовка WASM/WASI fallback (SWC + Tailwind + lightningcss)..."
+node scripts/setup-linux-build.mjs
 
 echo "==> Миграции БД..."
 npm run prisma:migrate:deploy
 
-echo "==> Сборка Next.js (ограничение RAM для малых VPS)..."
-export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1536}"
-export NEXT_TELEMETRY_DISABLED=1
+echo "==> Сборка Next.js..."
+chmod +x scripts/next-build.sh
 npm run build
 
 echo "==> Финальная проверка better-sqlite3..."

@@ -8,10 +8,11 @@
   },
   "scripts": {
     "dev": "next dev -p 8080",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && node scripts/setup-linux-build.mjs && bash scripts/next-build.sh",
+    "build:next": "next build",
     "start": "next start -H ${HOSTNAME:-127.0.0.1} -p ${PORT:-8080}",
     "start:public": "next start -H 0.0.0.0 -p 8080",
-    "postinstall": "prisma generate && npm rebuild better-sqlite3",
+    "postinstall": "prisma generate && npm rebuild better-sqlite3 && node scripts/setup-linux-build.mjs",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "audit:check": "npm audit --audit-level=high",
@@ -40,7 +41,9 @@
     "zustand": "^5.0.14"
   },
   "optionalDependencies": {
-    "@next/swc-wasm-nodejs": "15.5.20"
+    "@next/swc-wasm-nodejs": "15.5.20",
+    "@tailwindcss/oxide-wasm32-wasi": "4.3.2",
+    "lightningcss-wasm": "1.32.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Диагностика нативных модулей на Linux-сервере (SWC, better-sqlite3, lightningcss).
+# Диагностика нативных модулей на Linux-сервере.
+# ВАЖНО: не вызываем require('@next/swc-linux-x64-gnu') / require('lightningcss') напрямую —
+# на проблемных VPS это Bus error и убивает shell.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,14 +14,35 @@ echo "npm:  $(npm -v 2>/dev/null || echo 'не установлен')"
 echo "RAM:  $(free -h | awk '/^Mem:/{print $2 " total, " $7 " available"}')"
 echo "Swap: $(free -h | awk '/^Swap:/{print $2 " total, " $3 " used"}')"
 swapon --show 2>/dev/null || echo "(swap не настроен)"
+echo "LD_PRELOAD: ${LD_PRELOAD:-<пусто>}"
 
 echo ""
-echo "=== Проверка модулей (по одному) ==="
+echo "=== Файлы fallback (без загрузки нативных .node) ==="
 
-check_module() {
+check_path() {
+  local label="$1"
+  local rel_path="$2"
+  printf "  %-30s " "$label"
+  if [[ -e "$rel_path" ]]; then
+    echo "OK ($rel_path)"
+  else
+    echo "НЕТ ($rel_path)"
+  fi
+}
+
+check_path "better-sqlite3 .node" "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+check_path "@next/swc-wasm-nodejs" "node_modules/@next/swc-wasm-nodejs/wasm.js"
+check_path "@tailwindcss/oxide-wasm32-wasi" "node_modules/@tailwindcss/oxide-wasm32-wasi"
+check_path "lightningcss-wasm" "node_modules/lightningcss-wasm/lightningcss_node.wasm"
+check_path "lightningcss WASM patch" "scripts/patches/lightningcss-index-wasm.cjs"
+
+echo ""
+echo "=== Безопасные проверки (WASM/WASI) ==="
+
+safe_check() {
   local label="$1"
   local code="$2"
-  printf "  %-28s " "$label"
+  printf "  %-30s " "$label"
   if node -e "$code" 2>/tmp/diag-native.err; then
     echo "OK"
   else
@@ -28,30 +51,28 @@ check_module() {
   fi
 }
 
-check_module "better-sqlite3" "require('better-sqlite3')"
-check_module "@next/swc-linux-x64-gnu" "require('@next/swc-linux-x64-gnu')"
-check_module "lightningcss" "require('lightningcss')"
-check_module "next (import)" "import('next').then(()=>{})"
+safe_check "better-sqlite3" "require('better-sqlite3')"
+safe_check "lightningcss-wasm" "require('lightningcss-wasm').transform({filename:'t.css',code:Buffer.from('a{}'),minify:false})"
+safe_check "tailwind oxide WASI" "process.env.NAPI_RS_FORCE_WASI='true'; require('@tailwindcss/oxide')"
 
 echo ""
 echo "=== Рекомендации ==="
 node_major="$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0)"
 if (( node_major < 22 )); then
-  echo "  • Node $(node -v): Prisma 7.8 рекомендует Node >=22. Обновите:"
-  echo "    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
-  echo "    sudo apt install -y nodejs"
+  echo "  • Node $(node -v) — нужен Node >=22"
 fi
 
 mem_mb="$(free -m | awk '/^Mem:/{print $2}')"
-if (( mem_mb < 1800 )); then
-  echo "  • RAM ${mem_mb}MB — для next build нужен swap ≥2GB:"
-  echo "    sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile"
-  echo "    sudo mkswap /swapfile && sudo swapon /swapfile"
+swap_kb="$(free -m | awk '/^Swap:/{print $2}')"
+if (( mem_mb < 2048 && swap_kb < 512 )); then
+  echo "  • RAM ${mem_mb}MB, swap ${swap_kb}MB — добавьте swap 2GB перед next build"
 fi
 
-if ! node -e "require('@next/swc-linux-x64-gnu')" 2>/dev/null; then
-  echo "  • SWC native не грузится — соберите с WASM:"
-  echo "    SMARTFLIP_SWC_WASM=1 ./deploy/build.sh"
+if [[ ! -f node_modules/@next/swc-wasm-nodejs/wasm.js ]]; then
+  echo "  • Запустите: node scripts/setup-linux-build.mjs"
 fi
+
+echo "  • Сборка: npm run build  (или ./deploy/build.sh)"
+echo "  • Не тестируйте @next/swc-linux-x64-gnu / lightningcss native — Bus error на этом VPS"
 
 rm -f /tmp/diag-native.err
