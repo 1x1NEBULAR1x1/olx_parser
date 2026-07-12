@@ -35,8 +35,8 @@ AUTH_TRUST_HOST=true
    - Redirect URI: `https://your-domain.example/api/auth/callback/google`
 5. `DATABASE_URL` — абсолютный путь к SQLite на сервере, например `file:/var/lib/smartflip/data.db`
 6. `npm run audit:check` — блокирует только **high/critical**
-7. На сервере установить `build-essential` и `python3` (см. ниже)
-8. `./deploy/build.sh` — **только на Linux-сервере**, не копировать `node_modules` с Mac
+7. На сервере: **Node.js >= 22**, `build-essential`, `python3`, swap ≥2GB на малых VPS
+8. `./deploy/build.sh` — **только на Linux-сервере**; при Bus error: `SMARTFLIP_SWC_WASM=1 ./deploy/build.sh`
 
 ## Безопасность npm (аудит)
 
@@ -61,17 +61,64 @@ npm audit             # полный отчёт
 
 ### Системные зависимости (обязательно до npm ci)
 
-`better-sqlite3` — нативный модуль Node.js. Его **нельзя** переносить с macOS: бинарник должен
-собираться на Linux-сервере.
+`better-sqlite3` и `@next/swc-linux-x64-gnu` — нативные модули. Их **нельзя** переносить
+с macOS: бинарники должны ставиться/собираться на Linux-сервере.
+
+**Node.js >= 22** обязателен (Prisma 7.8 / `@prisma/streams-local`).
 
 ```bash
 sudo apt update
 sudo apt install -y curl git build-essential python3
-# Node.js 20 LTS (пример через NodeSource)
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+# Node.js 22 LTS
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
-node -v   # v20.x
+node -v   # v22.x
 npm -v
+```
+
+### Bus error при `next build`
+
+Типичные причины на дешёвых VPS:
+
+| Причина | Решение |
+|---------|---------|
+| Node 20 вместо 22 | Обновить до Node 22 (см. выше) |
+| Мало RAM (<2 GB) без swap | Добавить swap 2 GB (ниже) |
+| `node_modules` с другой ОС / `npm i` вместо `npm ci` | `rm -rf node_modules .next && npm ci` |
+| Нативный SWC падает на CPU VPS | `SMARTFLIP_SWC_WASM=1 ./deploy/build.sh` |
+
+**Swap (если RAM 512MB–1GB):**
+
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+**Диагностика:**
+
+```bash
+chmod +x deploy/diagnose-native.sh
+./deploy/diagnose-native.sh
+```
+
+**Полная пересборка на сервере:**
+
+```bash
+cd /var/www/smartflip
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs build-essential python3
+
+rm -rf node_modules .next
+npm ci
+npm rebuild better-sqlite3 --build-from-source
+
+# если next build всё ещё падает:
+SMARTFLIP_SWC_WASM=1 ./deploy/build.sh
+
+sudo systemctl restart smartflip
 ```
 
 Если при старте видите `Could not locate the bindings file` для `better_sqlite3.node`:
