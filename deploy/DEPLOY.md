@@ -35,7 +35,8 @@ AUTH_TRUST_HOST=true
    - Redirect URI: `https://your-domain.example/api/auth/callback/google`
 5. `DATABASE_URL` — абсолютный путь к SQLite на сервере, например `file:/var/lib/smartflip/data.db`
 6. `npm run audit:check` — блокирует только **high/critical**
-7. `./deploy/build.sh` или вручную: `npm ci && npm run prisma:migrate:deploy && npm run build`
+7. На сервере установить `build-essential` и `python3` (см. ниже)
+8. `./deploy/build.sh` — **только на Linux-сервере**, не копировать `node_modules` с Mac
 
 ## Безопасность npm (аудит)
 
@@ -57,6 +58,34 @@ npm audit             # полный отчёт
 Заголовки безопасности заданы в `next.config.ts` (`poweredByHeader: false`, X-Frame-Options и др.).
 
 ## Установка на VPS (Ubuntu/Debian)
+
+### Системные зависимости (обязательно до npm ci)
+
+`better-sqlite3` — нативный модуль Node.js. Его **нельзя** переносить с macOS: бинарник должен
+собираться на Linux-сервере.
+
+```bash
+sudo apt update
+sudo apt install -y curl git build-essential python3
+# Node.js 20 LTS (пример через NodeSource)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+node -v   # v20.x
+npm -v
+```
+
+Если при старте видите `Could not locate the bindings file` для `better_sqlite3.node`:
+
+```bash
+cd /var/www/smartflip
+sudo apt install -y build-essential python3
+rm -rf node_modules
+npm ci
+npm rebuild better-sqlite3 --build-from-source
+node -e "require('better-sqlite3')"
+./deploy/build.sh
+sudo systemctl restart smartflip
+```
 
 ```bash
 # 1. Клонировать проект
