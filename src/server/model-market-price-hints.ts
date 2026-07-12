@@ -1,10 +1,12 @@
 import { containsKeyword } from "./text-match";
 
-// Ориентировочные медианные цены ИСПРАВНЫХ устройств на вторичном рынке PL (PLN, 2026).
-// База — вариант 64 GB. Мультипликаторы объёма калиброваны под рынок 2024–2026:
-// 128 GB — крупнейшая доля отгрузок (CMR/MarkWide), 256 GB — самый быстрый рост
-// в премиуме (TrendForce, CMR India Q1 2026).
+// Ориентировочные цены ИСПРАВНЫХ устройств (PLN, 2026). База — MARKET_REFERENCE_STORAGE_GB.
+// Сырые значения ближе к «витринным» медианам; getModelMarketPrice() дополнительно
+// умножает на OLX_USED_MARKET_FACTOR — реальные сделки на OLX.pl ниже на ~25–30%.
 export const MARKET_REFERENCE_STORAGE_GB = 128;
+
+/** Доля от справочной цены — типичная цена б/у на OLX.pl (износ, торг, не идеал). */
+const OLX_USED_MARKET_FACTOR = 0.72;
 
 const MODEL_MARKET_PRICE_HINTS: Array<{ keyword: string; price_pln: number }> = [
   { keyword: "iphone 17", price_pln: 4200 },
@@ -150,5 +152,11 @@ export function getModelMarketPrice(model_key: string, storage_gb: number | null
   }
 
   if (!best_match) return null;
-  return Math.round(best_match.price_pln * getStorageMultiplier(storage_gb));
+
+  const effective_storage = storage_gb ?? MARKET_REFERENCE_STORAGE_GB;
+  const storage_adjusted = best_match.price_pln
+    * getStorageMultiplier(effective_storage)
+    / getStorageMultiplier(MARKET_REFERENCE_STORAGE_GB);
+
+  return Math.round(storage_adjusted * OLX_USED_MARKET_FACTOR);
 }

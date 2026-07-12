@@ -5,6 +5,9 @@ export default {
     brand_fallback: "Smartphone",
     settings: "Settings",
     notification_settings_link: "Notifications",
+    preferences_menu: "Settings & appearance",
+    program_section: "App settings",
+    language: "Language",
   },
 
   common: {
@@ -65,6 +68,7 @@ export default {
 
   sort: {
     label: "Sort:",
+    recommended_repair: "★ Recommended repair",
     profitability_desc: "Profitability ↓",
     profitability_asc: "Profitability ↑",
     price_asc: "Price ↑",
@@ -148,7 +152,7 @@ export default {
     saved: "Saved",
     junk_section_title: "Junk listings",
     exclude_junk_label: "Exclude junk listings",
-    exclude_junk_hint: "Hides old models, multi-phone lots, repair-service ads, and unrealistic prices — also covers the minimum release year filter below.",
+    exclude_junk_hint: "Hides old models, feature phones (Nokia 3310 etc.), multi-phone lots, repair-service ads, and unrealistic prices — also covers the minimum release year filter below.",
     junk_min_year_label: "Don't show models older than",
     junk_min_year_hint: "Part of the junk exclusion mode above — only takes effect while it's enabled.",
     platform_section_title: "Platforms",

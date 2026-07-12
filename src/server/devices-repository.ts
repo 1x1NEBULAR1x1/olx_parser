@@ -2,6 +2,7 @@ import { prisma } from "@/db/client";
 import type { AllegroPart, AnalyzedDevice, DevicesFilterMeta } from "./types";
 import type { Device, Part } from "@prisma/client";
 import { buildDevicesFilterMeta, type DeviceFilterRow } from "./devices-filter-meta";
+import { evaluateJunkStatus, type JunkFilterSettings } from "./junk-filter";
 
 type DeviceWithParts = Device & { parts: Part[] };
 
@@ -101,15 +102,17 @@ async function getCachedAt(): Promise<string | null> {
 
 const DEVICE_FILTER_SELECT = {
   id: true,
-  profitability_pct: true,
+  title: true,
+  price_buy: true,
+  post_summary: true,
   brand: true,
   model_key: true,
+  profitability_pct: true,
   model_label: true,
   model_line: true,
   model_line_label: true,
   damage_types: true,
   region: true,
-  price_buy: true,
   liquidity_score: true,
   release_year: true,
 } as const;
@@ -133,12 +136,31 @@ export async function getLatestDevicesPage(
   const hidden_set = new Set(page_options.hidden_device_ids ?? []);
   const favorite_set = new Set(page_options.favorite_device_ids ?? []);
 
-  const [filter_rows, cached_at] = await Promise.all([
+  const [filter_rows, cached_at, app_settings] = await Promise.all([
     prisma.device.findMany({ select: DEVICE_FILTER_SELECT }),
     getCachedAt(),
+    getAppSettings(),
   ]);
 
+  const junk_settings: JunkFilterSettings = {
+    exclude_junk_listings: app_settings.exclude_junk_listings,
+    junk_min_release_year: app_settings.junk_min_release_year,
+  };
+
   let visible_rows = filter_rows;
+  if (app_settings.exclude_junk_listings) {
+    visible_rows = visible_rows.filter((row) => !evaluateJunkStatus(
+      {
+        title: row.title,
+        post_summary: row.post_summary,
+        brand: row.brand,
+        model_key: row.model_key,
+        price_buy: row.price_buy,
+        release_year: row.release_year,
+      },
+      junk_settings,
+    ).is_junk);
+  }
   if (!page_options.include_hidden && hidden_set.size > 0) {
     visible_rows = visible_rows.filter((row) => !hidden_set.has(row.id));
   }

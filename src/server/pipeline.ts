@@ -8,14 +8,14 @@ import {
   getIfixitCache, setIfixitCache,
   getAllegroCache, setAllegroCache,
 } from "./cache";
-import { extractBrand, estimateMarketSellPrice } from "./brand-extractor";
+import { estimateDamagedResalePrice, estimateMarketSellPrice, extractBrand } from "./brand-extractor";
 import { extractStorageGb, getModelMarketPrice, getStorageMultiplier, MARKET_REFERENCE_STORAGE_GB } from "./model-market-price-hints";
 import { extractModelKey } from "./model-normalizer";
 import { extractModelLine } from "./model-line-extractor";
 import { clusterModelKeys } from "./model-key-clusterer";
 import { evaluateJunkStatus, type JunkFilterSettings } from "./junk-filter";
 import { isPlatformExcluded, type PlatformFilterSettings } from "./platform-filter";
-import { calculateProfitability } from "./profitability";
+import { calculateProfitability, estimatePartsCost } from "./profitability";
 import { getStaticPartsEstimate, buildAllegroSearchUrl, PART_SEARCH_KEYWORDS } from "./static-parts-prices";
 import { fetchCeneoParts } from "./ceneo-fetcher";
 import { fetchOlxParts, buildOlxPartsSearchUrl } from "./olx-parts-fetcher";
@@ -618,18 +618,39 @@ async function finalizeDevices(raw_listings: RawAnalyzedListing[], cache_ttl_hou
     let market_sell_price_source: "model_median" | "cached_median" | "model_hint" | "brand_estimate" | null;
 
     if (is_damaged) {
-      market_sell_price = estimateMarketSellPrice(
-        raw.brand,
-        raw.model_key,
-        raw.price_buy,
-        true,
-        storage_gb,
-      );
-      market_sell_price_source = market_sell_price === null
-        ? null
-        : model_hint_price !== null
-          ? "model_hint"
-          : "brand_estimate";
+      const parts_cost_preview = estimatePartsCost(raw.allegro_parts);
+      const working_anchor = anchor_price ?? model_hint_price;
+
+      if (working_anchor !== null) {
+        market_sell_price = estimateDamagedResalePrice(
+          working_anchor,
+          raw.damage_types,
+          raw.price_buy,
+          parts_cost_preview,
+        );
+        market_sell_price_source = median_price !== null
+          ? "model_median"
+          : model_hint_price !== null
+            ? "model_hint"
+            : cached_median_adjusted !== null
+              ? "cached_median"
+              : "brand_estimate";
+      } else {
+        market_sell_price = estimateMarketSellPrice(
+          raw.brand,
+          raw.model_key,
+          raw.price_buy,
+          true,
+          storage_gb,
+          raw.damage_types,
+          parts_cost_preview,
+        );
+        market_sell_price_source = market_sell_price === null
+          ? null
+          : model_hint_price !== null
+            ? "model_hint"
+            : "brand_estimate";
+      }
     } else if (anchor_price !== null) {
       market_sell_price = Math.round(
         anchor_price * (raw.has_box ? 1 + BOX_AND_ACCESSORIES_BONUS_SCORE / 100 : 1),

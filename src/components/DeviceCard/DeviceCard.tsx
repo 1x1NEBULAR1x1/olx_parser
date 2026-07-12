@@ -8,6 +8,7 @@ import { isSuspiciousListing } from "@/lib/listing-flags";
 import { updateUserListingAction } from "@/lib/api";
 import type { AnalyzedDevice } from "@/lib/api";
 import { useCallback, useRef, useState } from "react";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 interface DeviceCardProps {
   device: AnalyzedDevice;
@@ -38,6 +39,7 @@ export function DeviceCard({ device, onNavigate, onListingChange }: DeviceCardPr
   const [is_busy, set_is_busy] = useState(false);
   const [active_photo, set_active_photo] = useState(0);
   const gallery_ref = useRef<HTMLDivElement>(null);
+  const is_compact_layout = useMediaQuery("(max-width: 639px)");
 
   const repairability_display =
     device.repairability_score !== null && device.repairability_scale
@@ -206,36 +208,41 @@ export function DeviceCard({ device, onNavigate, onListingChange }: DeviceCardPr
           </div>
         )}
 
-        <div className={styles.card_stats}>
-          <StatBar
-            label={t("liquidity")}
-            value={device.liquidity_score}
-            display_value={device.liquidity_score !== null ? `${Math.round(device.liquidity_score)}` : "—"}
-          />
-          <StatBar
-            label={t("profitability")}
-            value={profitability_bar_value}
-            display_value={device.profitability_pct !== null ? `${device.profitability_pct}%` : "—"}
-          />
-          <StatBar
-            label={t("repairability")}
-            value={repairability_bar_value}
-            display_value={repairability_display !== null ? `${repairability_display}/10` : "—"}
-          />
-        </div>
-
-        <div className={styles.card_economics}>
-          <div className={styles.card_economics_item}>
-            <span className={styles.card_economics_label}>{t("repair_cost")}</span>
-            <span className={styles.card_economics_value}>
-              {device.parts_cost_estimate !== null ? `~${device.parts_cost_estimate} zł` : "—"}
-            </span>
+        <div className={styles.card_metrics}>
+          <div className={styles.card_stats}>
+            <StatBar
+              label={t("liquidity")}
+              value={device.liquidity_score}
+              display_value={device.liquidity_score !== null ? `${Math.round(device.liquidity_score)}` : "—"}
+              compact={is_compact_layout}
+            />
+            <StatBar
+              label={t("profitability")}
+              value={profitability_bar_value}
+              display_value={device.profitability_pct !== null ? `${device.profitability_pct}%` : "—"}
+              compact={is_compact_layout}
+            />
+            <StatBar
+              label={t("repairability")}
+              value={repairability_bar_value}
+              display_value={repairability_display !== null ? `${repairability_display}/10` : "—"}
+              compact={is_compact_layout}
+            />
           </div>
-          <div className={`${styles.card_economics_item} ${styles.card_economics_item_highlight}`}>
-            <span className={styles.card_economics_label}>{t("profit")}</span>
-            <span className={getProfitValueClass(device.profit_estimate)}>
-              {device.profit_estimate !== null ? `${device.profit_estimate} zł` : "—"}
-            </span>
+
+          <div className={styles.card_economics}>
+            <div className={`${styles.card_economics_item} ${styles.card_economics_item_highlight}`}>
+              <span className={styles.card_economics_label}>{t("profit")}</span>
+              <span className={getProfitValueClass(device.profit_estimate)}>
+                {device.profit_estimate !== null ? `${device.profit_estimate} zł` : "—"}
+              </span>
+            </div>
+            <div className={styles.card_economics_item}>
+              <span className={styles.card_economics_label}>{t("repair_cost")}</span>
+              <span className={styles.card_economics_value}>
+                {device.parts_cost_estimate !== null ? `~${device.parts_cost_estimate} zł` : "—"}
+              </span>
+            </div>
           </div>
         </div>
       </div>

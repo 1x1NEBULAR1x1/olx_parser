@@ -64,41 +64,85 @@ export function extractBrandDisplay(brand: string): string {
   return display_map[brand] ?? brand;
 }
 
-// Рыночные цены на исправные телефоны по бренду (PLN, медиана 2026)
+// Рыночные цены на исправные телефоны по бренду (PLN, медиана OLX б/у 2026)
 const BRAND_WORKING_PRICE_MEDIAN: Record<string, number> = {
-  apple: 2800,
-  samsung: 1900,
-  google: 1800,
-  xiaomi: 900,
-  redmi: 650,
-  poco: 700,
-  motorola: 800,
-  huawei: 750,
-  honor: 700,
-  oppo: 750,
-  realme: 600,
-  oneplus: 1100,
-  sony: 1200,
-  nokia: 500,
-  unknown: 700,
+  apple: 2100,
+  samsung: 1500,
+  google: 1400,
+  xiaomi: 750,
+  redmi: 520,
+  poco: 580,
+  motorola: 650,
+  huawei: 620,
+  honor: 580,
+  oppo: 620,
+  realme: 500,
+  oneplus: 900,
+  sony: 1000,
+  nokia: 420,
+  unknown: 600,
 };
 
-// Раньше эти же множители применялись ВНЕ ЗАВИСИМОСТИ от того, повреждено ли
-// объявление — для целого iPhone за 3000 zł это давало estimated_working =
-// max(2800, 3000/0.38) = 7894, market_sell_price = 6475 zł (в 2 раза выше
-// цены покупки уже исправного телефона). Именованные константы ниже
-// используются ТОЛЬКО в ветке is_damaged=true (см. estimateMarketSellPrice).
-const DAMAGED_TO_WORKING_PRICE_RECOVERY_FACTOR = 0.38; // битый ≈ 38% рабочего
-const REFURBISHED_RESALE_SHARE_OF_WORKING_PRICE = 0.82; // восстановленный продаётся за 82% рабочей цены
+const UNDAMAGED_RESALE_OPTIMISM_FACTOR = 1.04;
+const SANITY_CLAMP_MIN_RATIO_TO_WORKING = 0.5;
+const SANITY_CLAMP_MAX_RATIO_TO_WORKING = 1.08;
 
-// Для НЕПОВРЕЖДЁННЫХ объявлений buy_price уже близка к рыночной (продавец не
-// демпингует из-за дефекта) — небольшая наценка (человек, готовый подождать
-// покупателя, обычно может продать чуть дороже конкретного объявления) плюс
-// санити-клэмп относительно медианы бренда, чтобы ошибка распознавания
-// бренда/цены не улетала в крайности.
-const UNDAMAGED_RESALE_OPTIMISM_FACTOR = 1.06;
-const SANITY_CLAMP_MIN_RATIO_TO_BRAND_MEDIAN = 0.45;
-const SANITY_CLAMP_MAX_RATIO_TO_BRAND_MEDIAN = 1.9;
+/** Скидка от цены исправного б/у после ремонта (доля, не абсолют). */
+const POST_REPAIR_DISCOUNT_BY_DAMAGE: Record<string, number> = {
+  screen: 0.10,
+  battery: 0.06,
+  back_cover: 0.05,
+  charging_port: 0.07,
+  buttons: 0.04,
+  camera: 0.12,
+  speaker: 0.06,
+  microphone: 0.06,
+  body: 0.14,
+  frame: 0.14,
+  software: 0.10,
+  sim_slot: 0.05,
+  water_damage: 0.22,
+  locked: 0.28,
+  unknown: 0.12,
+};
+
+const DEFAULT_POST_REPAIR_DISCOUNT = 0.08;
+const MAX_POST_REPAIR_DISCOUNT = 0.38;
+const REFURBISHED_MAX_SHARE_OF_WORKING = 0.92;
+
+function computePostRepairDiscount(damage_types: string[]): number {
+  if (damage_types.length === 0) return DEFAULT_POST_REPAIR_DISCOUNT;
+
+  let total = 0;
+  for (const damage_type of damage_types) {
+    total += POST_REPAIR_DISCOUNT_BY_DAMAGE[damage_type] ?? 0.10;
+  }
+
+  return Math.min(MAX_POST_REPAIR_DISCOUNT, total * 0.82);
+}
+
+/**
+ * Оценка цены продажи ПОСЛЕ ремонта: отталкиваемся от рыночной цены исправного
+ * б/у на OLX, а не от обратного восстановления buy_price / 0.38.
+ */
+export function estimateDamagedResalePrice(
+  working_price: number,
+  damage_types: string[],
+  buy_price: number | null,
+  parts_cost_estimate: number | null = null,
+): number {
+  const discount = computePostRepairDiscount(damage_types);
+  let sell = working_price * (1 - discount);
+  sell = Math.min(sell, working_price * REFURBISHED_MAX_SHARE_OF_WORKING);
+
+  if (parts_cost_estimate !== null && parts_cost_estimate > 0 && buy_price && buy_price > 0) {
+    const repair_floor = buy_price + parts_cost_estimate * 1.12 + 80;
+    sell = Math.max(sell, repair_floor);
+    sell = Math.min(sell, working_price * 0.95);
+  }
+
+  return Math.round(sell);
+}
 
 export function estimateMarketSellPrice(
   brand: string,
@@ -106,26 +150,28 @@ export function estimateMarketSellPrice(
   buy_price: number | null,
   is_damaged: boolean,
   storage_gb: number | null = null,
+  damage_types: string[] = [],
+  parts_cost_estimate: number | null = null,
 ): number | null {
   if (!buy_price || buy_price <= 0) return null;
 
   const model_working_price = getModelMarketPrice(model_key, storage_gb);
-  const brand_median = BRAND_WORKING_PRICE_MEDIAN[brand] ?? 700;
+  const brand_median = BRAND_WORKING_PRICE_MEDIAN[brand] ?? 600;
   const working_price = model_working_price ?? brand_median;
 
   if (!is_damaged) {
     const optimistic_price = buy_price * UNDAMAGED_RESALE_OPTIMISM_FACTOR;
     const clamped = Math.min(
-      Math.max(optimistic_price, working_price * SANITY_CLAMP_MIN_RATIO_TO_BRAND_MEDIAN),
-      working_price * SANITY_CLAMP_MAX_RATIO_TO_BRAND_MEDIAN,
+      Math.max(optimistic_price, working_price * SANITY_CLAMP_MIN_RATIO_TO_WORKING),
+      working_price * SANITY_CLAMP_MAX_RATIO_TO_WORKING,
     );
     return Math.round(clamped);
   }
 
-  const from_recovery = buy_price / DAMAGED_TO_WORKING_PRICE_RECOVERY_FACTOR;
-  const estimated_working = Math.min(
-    Math.max(working_price * 0.85, from_recovery),
-    working_price * 1.1,
+  return estimateDamagedResalePrice(
+    working_price,
+    damage_types,
+    buy_price,
+    parts_cost_estimate,
   );
-  return Math.round(estimated_working * REFURBISHED_RESALE_SHARE_OF_WORKING_PRICE);
 }

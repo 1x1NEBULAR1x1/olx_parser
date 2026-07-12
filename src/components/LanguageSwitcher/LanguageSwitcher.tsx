@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import styles from "./LanguageSwitcher.module.scss";
 import { SUPPORTED_LOCALES, LOCALE_COOKIE_NAME, type AppLocale } from "@/i18n/config";
 
@@ -11,9 +11,20 @@ const LOCALE_LABELS: Record<AppLocale, string> = {
   ru: "RU",
 };
 
-export function LanguageSwitcher() {
+const LOCALE_NAMES: Record<AppLocale, string> = {
+  pl: "Polski",
+  en: "English",
+  ru: "Русский",
+};
+
+interface LanguageSwitcherProps {
+  variant?: "inline" | "stacked";
+}
+
+export function LanguageSwitcher({ variant = "inline" }: LanguageSwitcherProps) {
   const router = useRouter();
   const active_locale = useLocale();
+  const t_app = useTranslations("app");
 
   function selectLocale(next_locale: AppLocale) {
     if (next_locale === active_locale) return;
@@ -22,7 +33,14 @@ export function LanguageSwitcher() {
   }
 
   return (
-    <div className={styles.switcher} role="group" aria-label="Language switcher">
+    <div
+      className={[
+        styles.switcher,
+        variant === "stacked" ? styles.switcher_stacked : "",
+      ].join(" ")}
+      role="group"
+      aria-label={t_app("language")}
+    >
       {SUPPORTED_LOCALES.map((locale) => (
         <button
           key={locale}
@@ -34,7 +52,7 @@ export function LanguageSwitcher() {
           onClick={() => selectLocale(locale)}
           aria-pressed={locale === active_locale}
         >
-          {LOCALE_LABELS[locale]}
+          {variant === "stacked" ? LOCALE_NAMES[locale] : LOCALE_LABELS[locale]}
         </button>
       ))}
     </div>

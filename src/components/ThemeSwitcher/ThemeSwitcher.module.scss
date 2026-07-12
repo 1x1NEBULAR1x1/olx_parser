@@ -21,6 +21,7 @@
     cursor: pointer;
     transition: all 0.15s;
     opacity: 0.55;
+    gap: 6px;
 
     &:hover {
       opacity: 0.85;
@@ -30,6 +31,39 @@
       background: var(--color-surface);
       opacity: 1;
       box-shadow: 0 1px 2px var(--color-shadow);
+    }
+  }
+
+  &_label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  &_stacked {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 4px;
+    padding: 4px;
+
+    .switcher_btn {
+      width: 100%;
+      min-height: 36px;
+      justify-content: flex-start;
+      padding: 0 10px;
+      opacity: 1;
+      color: var(--color-text-secondary);
+
+      &:hover {
+        background: var(--color-surface-hover);
+        color: var(--color-text);
+      }
+
+      &_active {
+        color: var(--color-primary);
+        background: var(--color-surface);
+      }
     }
   }
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Bell } from "lucide-react";
+import { Bell, Smartphone } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { HeaderActions } from "@/components/HeaderActions/HeaderActions";
 import { fetchSettings, updateSettings } from "@/lib/api";
@@ -80,17 +80,26 @@ export default function SettingsPage() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="max-w-screen-xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center gap-2 sm:gap-3 flex-wrap">
-          <Link href="/" className="text-sm font-bold app-link">← SmartFlip</Link>
-          <span className="app-divider hidden sm:inline">/</span>
-          <span className="text-sm app-text-muted flex-1">{t("title")}</span>
-          <div className="flex items-center gap-2 sm:gap-3">
+        <div className="max-w-screen-xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg md:text-xl font-black app-text tracking-tight flex items-center gap-2 min-w-0">
+              <Link href="/" className="flex items-center gap-2 min-w-0 no-underline app-text">
+                <Smartphone size={20} className="app-accent shrink-0 sm:hidden" aria-hidden />
+                <Smartphone size={22} className="app-accent shrink-0 hidden sm:block" aria-hidden />
+                <span className="truncate">SmartFlip</span>
+              </Link>
+            </h1>
+            <p className="text-[11px] sm:text-xs app-text-muted truncate">{t("title")}</p>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-3 flex-wrap justify-end shrink-0">
             <Link
               href="/notifications/settings"
-              className="app-btn-ghost whitespace-nowrap"
+              className="app-btn-icon max-sm:hidden"
+              aria-label={t_app("notification_settings_link")}
+              title={t_app("notification_settings_link")}
             >
-              <Bell size={16} aria-hidden />
-              {t_app("notification_settings_link")}
+              <Bell size={18} aria-hidden />
             </Link>
             <HeaderActions />
           </div>

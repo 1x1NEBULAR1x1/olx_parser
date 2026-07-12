@@ -5,6 +5,9 @@ export default {
     brand_fallback: "Smartfon",
     settings: "Ustawienia",
     notification_settings_link: "Powiadomienia",
+    preferences_menu: "Ustawienia i wygląd",
+    program_section: "Ustawienia programu",
+    language: "Język",
   },
 
   common: {
@@ -65,6 +68,7 @@ export default {
 
   sort: {
     label: "Sortuj:",
+    recommended_repair: "★ Rekomendowany remont",
     profitability_desc: "Rentowność ↓",
     profitability_asc: "Rentowność ↑",
     price_asc: "Cena ↑",
@@ -148,7 +152,7 @@ export default {
     saved: "Zapisano",
     junk_section_title: "Ogłoszenia śmieciowe",
     exclude_junk_label: "Wykluczaj ogłoszenia śmieciowe",
-    exclude_junk_hint: "Skrywa stare modele, zestawy kilku telefonów, ogłoszenia serwisów naprawczych i nierealistyczne ceny — obejmuje też filtr minimalnego roku wydania poniżej.",
+    exclude_junk_hint: "Skrywa stare modele, telefony komórkowe (Nokia 3310 itd.), zestawy kilku telefonów, ogłoszenia serwisów naprawczych i nierealistyczne ceny — obejmuje też filtr minimalnego roku wydania poniżej.",
     junk_min_year_label: "Nie pokazuj modeli starszych niż",
     junk_min_year_hint: "Część powyższego trybu wykluczania śmieci — działa tylko, gdy jest włączony.",
     platform_section_title: "Platformy",

@@ -32,7 +32,7 @@ interface SeriesPattern {
 // Порядок важен: более специфичные паттерны (Ultra/Pro Max/FE) должны
 // проверяться раньше общих, иначе общий вариант "съест" совпадение первым.
 const SERIES_PATTERNS: SeriesPattern[] = [
-  { brand: "apple", regex: /iphone\s*(\d{1,2}\s*(?:pro\s*max|pro|plus|mini|se)?)/i },
+  { brand: "apple", regex: /iphone\s*(\d{1,2}[cs]?(?:\s*(?:pro\s*max|pro|plus|mini|se))?)/i },
   // "galaxy" перед S/A/Note/Z/M опционален — часть продавцов пишет просто
   // "Samsung S23 Ultra" без слова "Galaxy". canonical_prefix гарантирует
   // ОДИНАКОВЫЙ model_key для обоих вариантов написания. Захваченная группа

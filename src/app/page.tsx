@@ -15,10 +15,12 @@ import { useFiltersStore } from "@/store/filters-store";
 import { useScrollStore, PAGE_SIZE_OPTIONS } from "@/store/scroll-store";
 import { getModelLineSortKey } from "@/server/model-line-extractor";
 import { useDevicesFeed } from "@/hooks/useDevicesFeed";
+import { compareRecommendedRepair } from "@/lib/recommendedRepairScore";
 import type { AnalyzedDevice } from "@/lib/api";
 import type { FilterValues } from "@/components/FilterBar/FilterBar";
 
 type SortKey =
+  | "recommended_repair"
   | "profitability_desc"
   | "profitability_asc"
   | "price_asc"
@@ -32,7 +34,7 @@ type SortKey =
 function sortDevices(devices: AnalyzedDevice[], sort: SortKey): AnalyzedDevice[] {
   return [...devices].sort((a, b) => {
     switch (sort) {
-      case "profitability_desc": return (b.profitability_pct ?? -999) - (a.profitability_pct ?? -999);
+      case "recommended_repair": return compareRecommendedRepair(a, b);
       case "profitability_asc": return (a.profitability_pct ?? 999) - (b.profitability_pct ?? 999);
       case "price_asc": return (a.price_buy ?? 999999) - (b.price_buy ?? 999999);
       case "price_desc": return (b.price_buy ?? 0) - (a.price_buy ?? 0);
@@ -115,7 +117,7 @@ export default function HomePage() {
     reload,
   } = useDevicesFeed();
 
-  const [sort, set_sort] = useState<SortKey>("profitability_desc");
+  const [sort, set_sort] = useState<SortKey>("recommended_repair");
   const [is_filters_open, set_is_filters_open] = useState(false);
   const [page, set_page] = useState(1);
   const [scroll_restored, set_scroll_restored] = useState(false);
@@ -186,6 +188,7 @@ export default function HomePage() {
   }
 
   const SORT_OPTIONS: SortKey[] = [
+    "recommended_repair",
     "profitability_desc", "profitability_asc",
     "price_asc", "price_desc",
     "repairability_desc", "liquidity_desc", "newest", "release_year_desc", "model_line",
@@ -218,7 +221,7 @@ export default function HomePage() {
 
             <Link
               href="/settings"
-              className="app-btn-icon"
+              className="app-btn-icon max-sm:hidden"
               aria-label={t_app("settings")}
               title={t_app("settings")}
             >

@@ -8,16 +8,17 @@ interface StatBarProps {
   // Отдельная текстовая подпись (может отличаться от value, например "72%"
   // или "6.2/10" — value только двигает заполнение шкалы).
   display_value: string;
+  compact?: boolean;
 }
 
 const CLAMP_MIN = 0;
 const CLAMP_MAX = 100;
 
-export function StatBar({ label, value, display_value }: StatBarProps) {
+export function StatBar({ label, value, display_value, compact = false }: StatBarProps) {
   const clamped = value === null ? null : Math.min(CLAMP_MAX, Math.max(CLAMP_MIN, value));
 
   return (
-    <div className={styles.stat_bar}>
+    <div className={[styles.stat_bar, compact ? styles.stat_bar_compact : ""].join(" ")}>
       <div className={styles.stat_bar_top}>
         <span className={styles.stat_bar_label}>{label}</span>
         <span className={styles.stat_bar_value}>{display_value}</span>

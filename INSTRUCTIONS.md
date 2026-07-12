@@ -239,11 +239,16 @@ t("common.loading")  // → "Ładowanie..."
 
 **Правило:** добавляя новое поле для кэширования по модели — решай, относится ли оно к "статичным характеристикам устройства" (→ `ModelCache`, без привязки к повреждениям) или "зависит от состояния конкретного объявления" (→ `PartsCostCache`, с `damage_signature`).
 
-### Паттерн формул рыночной цены и condition_score (`brand-extractor.ts`, `pipeline.ts`)
-`estimateMarketSellPrice(brand, buy_price, is_damaged)` — ветвится по `is_damaged`:
-- **Неповреждённое объявление**: `buy_price × UNDAMAGED_RESALE_OPTIMISM_FACTOR` (небольшая наценка), зажатое в `[brand_median × SANITY_CLAMP_MIN_RATIO_TO_BRAND_MEDIAN, brand_median × SANITY_CLAMP_MAX_RATIO_TO_BRAND_MEDIAN]` — раньше формула "восстановления" применялась даже к целым телефонам, выдавая цену продажи В ДВА РАЗА выше цены покупки.
-- **Повреждённое**: старая формула восстановления (`buy_price / DAMAGED_TO_WORKING_PRICE_RECOVERY_FACTOR × REFURBISHED_RESALE_SHARE_OF_WORKING_PRICE`), но с именованными константами вместо магических чисел.
-Вызывается в `finalizeDevices` с `raw.damage_types.length > 0` как `is_damaged` — **правило:** любой новый вызов `estimateMarketSellPrice` должен передавать актуальный признак повреждённости, иначе для целых устройств снова получится нереалистично высокая цена.
+### Паттерн формул рыночной цены и condition_score (`brand-extractor.ts`, `model-market-price-hints.ts`, `pipeline.ts`)
+`getModelMarketPrice(model_key, storage_gb)` — справочник `MODEL_MARKET_PRICE_HINTS` (база `MARKET_REFERENCE_STORAGE_GB=128`), нормализация объёма памяти `price × mult(storage) / mult(REFERENCE)`, затем `× OLX_USED_MARKET_FACTOR (0.72)` — реальные сделки OLX.pl ниже «витринных» оценок.
+
+`estimateDamagedResalePrice(working_price, damage_types, buy_price, parts_cost)` — цена продажи **после ремонта**: `working_price × (1 − post_repair_discount)` с потолком `0.92 × working`. Скидки по типам повреждения (экран ~10%, вода ~22%…), суммируются с убывающей отдачей (cap 38%). Пол `buy + parts×1.12 + 80` только если есть оценка запчастей, но не выше `0.95 × working`. **Не** использует `buy_price / 0.38`.
+
+`estimateMarketSellPrice(brand, model_key, buy_price, is_damaged, storage_gb, damage_types, parts_cost)` — fallback:
+- **Неповреждённое**: `buy × 1.04`, зажатое в `[working × 0.5, working × 1.08]`.
+- **Повреждённое**: делегирует в `estimateDamagedResalePrice` с `working = getModelMarketPrice ?? brand_median`.
+
+В `finalizeDevices` для `is_damaged` приоритет: `anchor_price` (медиана/хинт/кэш) → `estimateDamagedResalePrice`; иначе полный fallback `estimateMarketSellPrice`. Передавать `raw.damage_types` и `estimatePartsCost(raw.allegro_parts)`.
 
 `computeConditionScore(damage_types, battery_health_percent)` в `pipeline.ts` заменил хардкод `condition_score: 45` (который был одинаковым для ВСЕХ объявлений независимо от состояния) — база 88, минус штраф за каждый тип повреждения, минус штраф за низкую батарею, `clamp(15, 95)`. Используется в `getLiquidityScore` — теперь состояние объявления реально влияет на `liquidity_score`.
 

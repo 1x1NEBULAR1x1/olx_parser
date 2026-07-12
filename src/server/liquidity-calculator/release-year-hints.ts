@@ -44,6 +44,14 @@ const MODEL_RELEASE_YEAR_HINTS: Array<{ keyword: string; year: number }> = [
   { keyword: "iphone 7", year: 2016 },
   { keyword: "iphone 6s", year: 2015 },
   { keyword: "iphone 6", year: 2014 },
+  { keyword: "iphone 5c", year: 2013 },
+  { keyword: "iphone 5s", year: 2013 },
+  { keyword: "iphone 5", year: 2012 },
+  { keyword: "iphone 4s", year: 2011 },
+  { keyword: "iphone 4", year: 2010 },
+  { keyword: "iphone 3gs", year: 2009 },
+  { keyword: "iphone 3g", year: 2008 },
+  { keyword: "iphone 3", year: 2007 },
 
   // Samsung Galaxy S / Note / Z
   { keyword: "galaxy s25 ultra", year: 2025 },
@@ -124,6 +132,22 @@ const MODEL_RELEASE_YEAR_HINTS: Array<{ keyword: string; year: number }> = [
   { keyword: "oneplus 11", year: 2023 },
   { keyword: "oneplus 10", year: 2022 },
   { keyword: "oneplus 9", year: 2021 },
+
+  // Nokia — только Android-смартфоны (кнопочные 3310/8210 фильтруются в junk-filter)
+  { keyword: "nokia g60", year: 2022 },
+  { keyword: "nokia g42", year: 2023 },
+  { keyword: "nokia g22", year: 2023 },
+  { keyword: "nokia g21", year: 2022 },
+  { keyword: "nokia g11", year: 2022 },
+  { keyword: "nokia g10", year: 2021 },
+  { keyword: "nokia x30", year: 2022 },
+  { keyword: "nokia x20", year: 2021 },
+  { keyword: "nokia x10", year: 2021 },
+  { keyword: "nokia 8.3", year: 2020 },
+  { keyword: "nokia 7.2", year: 2019 },
+  { keyword: "nokia 6.2", year: 2019 },
+  { keyword: "nokia 5.4", year: 2021 },
+  { keyword: "nokia 5.3", year: 2020 },
 
   // Huawei / Honor
   { keyword: "p60", year: 2023 },

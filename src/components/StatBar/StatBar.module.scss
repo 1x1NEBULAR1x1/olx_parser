@@ -47,4 +47,33 @@
     bottom: 0;
     background: var(--color-surface-muted);
   }
+
+  &_compact {
+    gap: 4px;
+    min-width: 0;
+
+    .stat_bar_top {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1px;
+    }
+
+    .stat_bar_label {
+      font-size: 8px;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+
+    .stat_bar_value {
+      font-size: 11px;
+      line-height: 1.2;
+    }
+
+    .stat_bar_track {
+      height: 3px;
+    }
+  }
 }

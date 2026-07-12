@@ -14,7 +14,11 @@ const THEME_ICONS: Record<ThemeChoice, typeof Sun> = {
 
 const THEME_ORDER: ThemeChoice[] = ["light", "dark", "system"];
 
-export function ThemeSwitcher() {
+interface ThemeSwitcherProps {
+  variant?: "inline" | "stacked";
+}
+
+export function ThemeSwitcher({ variant = "inline" }: ThemeSwitcherProps) {
   const t = useTranslations("theme");
   const [choice, set_choice] = useState<ThemeChoice>("system");
 
@@ -30,7 +34,14 @@ export function ThemeSwitcher() {
   }
 
   return (
-    <div className={styles.switcher} role="group" aria-label={t("label")}>
+    <div
+      className={[
+        styles.switcher,
+        variant === "stacked" ? styles.switcher_stacked : "",
+      ].join(" ")}
+      role="group"
+      aria-label={t("label")}
+    >
       {THEME_ORDER.map((theme_choice) => {
         const Icon = THEME_ICONS[theme_choice];
         return (
@@ -46,6 +57,9 @@ export function ThemeSwitcher() {
             title={t(theme_choice)}
           >
             <Icon size={16} aria-hidden />
+            {variant === "stacked" && (
+              <span className={styles.switcher_label}>{t(theme_choice)}</span>
+            )}
           </button>
         );
       })}

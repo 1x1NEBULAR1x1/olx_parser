@@ -14,6 +14,27 @@ export interface ProfitabilityResult {
   profitability_pct: number | null;
 }
 
+/** Минимальная сумма запчастей по типам повреждения (одна запчасть на тип). */
+export function estimatePartsCost(parts: AllegroPart[]): number | null {
+  const parts_with_price = parts.filter((p) => p.price !== null && p.price > 0);
+  if (parts_with_price.length === 0) return null;
+
+  const parts_with_type = parts_with_price.filter((p) => p.damage_type);
+  if (parts_with_type.length > 0) {
+    const min_by_type = new Map<string, number>();
+    for (const p of parts_with_type) {
+      const type = p.damage_type!;
+      const existing = min_by_type.get(type);
+      if (existing === undefined || (p.price ?? 0) < existing) {
+        min_by_type.set(type, p.price ?? 0);
+      }
+    }
+    return Array.from(min_by_type.values()).reduce((sum, v) => sum + v, 0);
+  }
+
+  return parts_with_price.reduce((sum, p) => sum + (p.price ?? 0), 0);
+}
+
 export function calculateProfitability(input: ProfitabilityInput): ProfitabilityResult {
   const { price_buy, parts, market_sell_price, repairability_score, repairability_scale } = input;
 
@@ -21,28 +42,7 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     return { parts_cost_estimate: null, profit_estimate: null, profitability_pct: null };
   }
 
-  const parts_with_price = parts.filter((p) => p.price !== null && p.price > 0);
-
-  // Если запчасти помечены типом повреждения — берём минимальную цену за каждый тип.
-  // Это корректно: для одного типа повреждения нужна одна запчасть (дешевейшая из найденных).
-  let parts_cost_estimate: number | null = null;
-  if (parts_with_price.length > 0) {
-    const parts_with_type = parts_with_price.filter((p) => p.damage_type);
-    if (parts_with_type.length > 0) {
-      const min_by_type = new Map<string, number>();
-      for (const p of parts_with_type) {
-        const type = p.damage_type!;
-        const existing = min_by_type.get(type);
-        if (existing === undefined || (p.price ?? 0) < existing) {
-          min_by_type.set(type, p.price ?? 0);
-        }
-      }
-      parts_cost_estimate = Array.from(min_by_type.values()).reduce((sum, v) => sum + v, 0);
-    } else {
-      // Запчасти без типа — берём просто сумму (обратная совместимость)
-      parts_cost_estimate = parts_with_price.reduce((sum, p) => sum + (p.price ?? 0), 0);
-    }
-  }
+  const parts_cost_estimate = estimatePartsCost(parts);
 
   if (!market_sell_price) {
     return { parts_cost_estimate, profit_estimate: null, profitability_pct: null };

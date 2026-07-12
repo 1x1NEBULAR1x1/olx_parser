@@ -7,4 +7,23 @@
   @media (min-width: 640px) {
     gap: 8px;
   }
+
+  &_desktop {
+    display: none;
+    align-items: center;
+    gap: 4px;
+
+    @media (min-width: 640px) {
+      display: flex;
+      gap: 8px;
+    }
+  }
+
+  &_mobile {
+    display: flex;
+
+    @media (min-width: 640px) {
+      display: none;
+    }
+  }
 }
