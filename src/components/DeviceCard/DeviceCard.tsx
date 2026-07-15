@@ -159,19 +159,16 @@ export function DeviceCard({ device, onNavigate, onListingChange }: DeviceCardPr
               label={t("liquidity")}
               value={device.liquidity_score}
               display_value={device.liquidity_score !== null ? `${Math.round(device.liquidity_score)}` : "—"}
-              compact
             />
             <StatBar
               label={t("profitability")}
               value={profitability_bar_value}
               display_value={device.profitability_pct !== null ? `${device.profitability_pct}%` : "—"}
-              compact
             />
             <StatBar
               label={t("repairability")}
               value={repairability_bar_value}
               display_value={repairability_display !== null ? `${repairability_display}/10` : "—"}
-              compact
             />
           </div>
 
