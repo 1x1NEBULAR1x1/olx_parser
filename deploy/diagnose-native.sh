@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 # Диагностика нативных модулей на Linux-сервере.
-# ВАЖНО: не вызываем require('@next/swc-linux-x64-gnu') / require('lightningcss') напрямую —
-# на проблемных VPS это Bus error и убивает shell.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -14,10 +12,9 @@ echo "npm:  $(npm -v 2>/dev/null || echo 'не установлен')"
 echo "RAM:  $(free -h | awk '/^Mem:/{print $2 " total, " $7 " available"}')"
 echo "Swap: $(free -h | awk '/^Swap:/{print $2 " total, " $3 " used"}')"
 swapon --show 2>/dev/null || echo "(swap не настроен)"
-echo "LD_PRELOAD: ${LD_PRELOAD:-<пусто>}"
 
 echo ""
-echo "=== Файлы fallback (без загрузки нативных .node) ==="
+echo "=== Нативные модули ==="
 
 check_path() {
   local label="$1"
@@ -31,14 +28,9 @@ check_path() {
 }
 
 check_path "better-sqlite3 .node" "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
-check_path "НЕТ swc-linux (хорошо)" "node_modules/@next/swc-linux-x64-gnu"
-check_path "@next/swc-wasm-nodejs" "node_modules/@next/swc-wasm-nodejs/wasm.js"
-check_path "@tailwindcss/oxide-wasm32-wasi" "node_modules/@tailwindcss/oxide-wasm32-wasi"
-check_path "lightningcss-wasm" "node_modules/lightningcss-wasm/lightningcss_node.wasm"
-check_path "lightningcss WASM patch" "scripts/patches/lightningcss-index-wasm.cjs"
 
 echo ""
-echo "=== Безопасные проверки (WASM/WASI) ==="
+echo "=== Проверки загрузки ==="
 
 safe_check() {
   local label="$1"
@@ -53,8 +45,6 @@ safe_check() {
 }
 
 safe_check "better-sqlite3" "require('better-sqlite3')"
-safe_check "lightningcss-wasm" "require('lightningcss-wasm').transform({filename:'t.css',code:Buffer.from('a{}'),minify:false})"
-safe_check "tailwind oxide WASI" "process.env.NAPI_RS_FORCE_WASI='true'; require('@tailwindcss/oxide')"
 
 echo ""
 echo "=== Рекомендации ==="
@@ -69,12 +59,11 @@ if (( mem_mb < 2048 && swap_kb < 512 )); then
   echo "  • RAM ${mem_mb}MB, swap ${swap_kb}MB — добавьте swap 2GB перед next build"
 fi
 
-if [[ -d node_modules/@next/swc-linux-x64-gnu ]]; then
-  echo "  • ОШИБКА: swc-linux установлен — npm ci снова подтянул native optional deps"
-  echo "    cp deploy/npmrc.server .npmrc && rm -rf node_modules && npm ci"
+if [[ ! -f node_modules/better-sqlite3/build/Release/better_sqlite3.node ]]; then
+  echo "  • better-sqlite3 не собран: npm rebuild better-sqlite3 --build-from-source"
+  echo "    Нужны: sudo apt install -y build-essential python3"
 fi
 
 echo "  • Сборка: npm run build  (или ./deploy/build.sh)"
-echo "  • Не тестируйте @next/swc-linux-x64-gnu / lightningcss native — Bus error на этом VPS"
 
 rm -f /tmp/diag-native.err

@@ -310,10 +310,11 @@ L2-кэш (`ModelCache`/`PartsCostCache` в БД, переживает рест�
    d. **Параллельно** (`Promise.all`): `resolveIfixitDataForQuery` (iFixit repairability, с кэшем) И `fetchPartsData` (запчасти по всем `damage_types`, тоже параллельно между собой).
    e. Возвращает `RawAnalyzedListing` — БЕЗ `market_sell_price`/`profitability`/`liquidity` (см. паттерн двухфазного расчёта выше); `null`, если объявление признано мусором на шаге a/c — `runFullPipeline` отфильтровывает `null` ПЕРЕД `finalizeDevices`.
 4. `fetchPartsData` на каждый `damage_type` (см. `fetchPartsForDamageType`):
-   a. OLX "Części do telefonów" (`olx-parts-fetcher.ts`) — основной источник, без анти-бот защиты.
-   b. Ceneo.pl (вторичная попытка — иногда реальные цены, чаще анти-бот заглушка).
-   c. Fallback: статические оценки из `static-parts-prices.ts` (помечены ★ в заголовке).
-5. **Фаза 2** — `finalizeDevices(raw_listings)` (см. паттерн выше): сначала `clusterModelKeys` дедуплицирует `model_key` внутри скана (регистр/пробелы/опечатки, см. паттерн дедупликации ниже) → медиана цены по (уже дедуплицированному) `model_key` → `market_sell_price`/`market_sell_price_source` → `calculateProfitability` (берёт **min цену** на каждый тип повреждения) → `getLiquidityScore` (реальные `release_year`/`has_box`/`battery_health_percent`/`market_median_price`).
+   a. Allegro (`allegro-parts-fetcher.ts`) — API → HTML → Scrapfly.
+   b. OLX "Części do telefonów" (`olx-parts-fetcher.ts`) — с медианным фильтром цен.
+   c. Ceneo.pl (третья попытка — чаще анти-бот заглушка).
+   d. Fallback: статические оценки из `static-parts-prices.ts` (помечены ★ в заголовке).
+5. **Фаза 2** — `finalizeDevices(raw_listings)`: `clusterModelKeys` → медиана цены по `model_key` в текущем скане → `prefetchOlxMarketPrices()` для моделей без медианы (OLX GraphQL `query`, сохранение в `ModelCache.avg_market_price`) → `market_sell_price`/`market_sell_price_source` → `calculateProfitability` (медиана запчастей по типу повреждения) → `getLiquidityScore`.
 6. Стадия `saving`: `saveDevices` — сохраняет весь результат скана в Prisma (транзакция, полная замена таблицы `Device`)
 
 ### Фильтрация цен запчастей (`parts-shared.ts`, общее для OLX/Ceneo)

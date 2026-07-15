@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Сборка production на Linux-сервере.
-# НЕ копируйте node_modules с macOS — нативные модули должны собираться на целевой ОС.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -53,9 +52,6 @@ warn_low_memory
 echo "==> Проверка уязвимостей (уровень high+)..."
 npm run audit:check
 
-echo "==> npmrc для сервера (optional=false — без нативных swc/lightningcss)..."
-cp deploy/npmrc.server .npmrc
-
 echo "==> Установка зависимостей (npm ci)..."
 if [[ -d node_modules ]] && ! node -e "require('better-sqlite3')" 2>/dev/null; then
   echo "    Чужие/битые бинарники — полная переустановка node_modules..."
@@ -67,14 +63,10 @@ echo "==> Сборка better-sqlite3..."
 npm rebuild better-sqlite3 --build-from-source
 verify_better_sqlite3
 
-echo "==> Подготовка WASM/WASI fallback (SWC + Tailwind + lightningcss)..."
-node scripts/setup-linux-build.mjs
-
 echo "==> Миграции БД..."
 npm run prisma:migrate:deploy
 
-echo "==> Сборка Next.js..."
-chmod +x scripts/next-build.sh
+echo "==> Сборка Next.js (webpack)..."
 npm run build
 
 echo "==> Финальная проверка better-sqlite3..."

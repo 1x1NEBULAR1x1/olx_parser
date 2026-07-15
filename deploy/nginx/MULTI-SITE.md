@@ -63,7 +63,7 @@ sudo nginx -t && sudo systemctl reload nginx
 ```env
 NEXTAUTH_URL=https://v677071.hosted-by-vdsina.com
 AUTH_TRUST_HOST=true
-HOSTNAME=127.0.0.1
+APP_BIND_HOST=127.0.0.1
 PORT=8080
 ```
 

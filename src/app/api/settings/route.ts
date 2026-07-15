@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdminUser, requireApprovedUser } from "@/server/auth-guards";
+import { requireApprovedUser } from "@/server/auth-guards";
 import { getAppSettings, updateAppSettings, type AppSettingsData } from "@/server/devices-repository";
 import {
   getUserDisplaySettings,
@@ -87,9 +87,6 @@ export async function PATCH(request: Request) {
   }
 
   if (body.battery_health_threshold_percent !== undefined) {
-    if (!is_admin) {
-      return NextResponse.json({ error: "Admin only" }, { status: 403 });
-    }
     if (typeof body.battery_health_threshold_percent !== "number") {
       return NextResponse.json({ error: "battery_health_threshold_percent must be a number" }, { status: 400 });
     }
@@ -97,7 +94,7 @@ export async function PATCH(request: Request) {
     if (percent < 0 || percent > 100) {
       return NextResponse.json({ error: "battery_health_threshold_percent must be between 0 and 100" }, { status: 400 });
     }
-    admin_patch.battery_health_threshold_percent = percent;
+    display_patch.battery_health_threshold_percent = percent;
   }
 
   if (body.auto_scan_interval_minutes !== undefined) {

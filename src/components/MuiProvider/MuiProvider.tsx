@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 
 interface MuiProviderProps {
@@ -15,7 +15,7 @@ function getIsDarkMode(): boolean {
 export function MuiProvider({ children }: MuiProviderProps) {
   const [is_dark, set_is_dark] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     set_is_dark(getIsDarkMode());
     const observer = new MutationObserver(() => set_is_dark(getIsDarkMode()));
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });

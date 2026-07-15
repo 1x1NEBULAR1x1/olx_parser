@@ -2,6 +2,19 @@ export type ThemeChoice = "light" | "dark" | "system";
 
 export const THEME_STORAGE_KEY = "smartflip-theme";
 
+export function readThemeChoice(): ThemeChoice {
+  if (typeof window === "undefined") return "system";
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === "light" || stored === "dark" || stored === "system") {
+      return stored;
+    }
+  } catch {
+    // localStorage недоступен (private mode и т.п.)
+  }
+  return "system";
+}
+
 export function resolveEffectiveTheme(choice: ThemeChoice): "light" | "dark" {
   if (choice === "system") {
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -29,7 +42,7 @@ export function buildAntiFoucScript(): string {
       try {
         var choice = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)}) || "system";
         var isDark = choice === "dark" || (choice === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        if (isDark) document.documentElement.classList.add("dark");
+        document.documentElement.classList.toggle("dark", isDark);
       } catch (e) {}
     })();
   `;

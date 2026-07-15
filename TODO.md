@@ -26,12 +26,13 @@
 
 Остаточный нюанс: между записью `createScanRun()` (статус "running") и реальным стартом long-running fetch есть небольшое окно, и если процесс сервера убит (`SIGKILL`)/крашится посреди скана, `ScanRun.status` останется "running" навечно (нет watchdog/timeout) — следующий `isScanningEffective()` будет ошибочно считать, что скан идёт, до ручной правки в БД или добавления TTL-проверки (например, "running" дольше N минут → считать stale). Не критично для текущего use-case (нет автоматического перезапуска на проде), но стоит учесть, если появится продовый деплой с рестартами.
 
-### Источники цен на запчасти (OLX → Ceneo → статика)
-- **Allegro REST API — проверено живьём, недоступен даже с валидным Client ID/Secret.** `POST /auth/oauth/token` (client_credentials) успешно выдаёт токен, но `GET /offers/listing` возвращает `403 {"code":"AccessDenied","userMessage":"No access to the specified resource."}`. Причина — не сэндбокс и не наши credentials: с 2025-2026 Allegro приостановил выдачу верификации для доступа к этому ресурсу новым приложениям ("Access to this resource is limited and is currently not being granted due to a business decision" — см. issue-трекер `allegro/allegro-api`, issues #11707, #12932, #13140). Без верификации приложения этот эндпоинт не заработает вообще, независимо от того, какие ключи подставить. Если Allegro когда-нибудь возобновит верификацию — интеграцию можно восстановить по тому же паттерну, что `olx-parts-fetcher.ts`/`ceneo-fetcher.ts` (см. `parts-shared.ts` для общих фильтров релевантности/цены).
-- **OLX ("Części do telefonów", `olx-parts-fetcher.ts`) — новый основной источник.** У OLX есть отдельная категория с реальными объявлениями о продаже запчастей (экраны, батареи, камеры и т.д.), HTML отдаётся без анти-бот защиты (в отличие от Ceneo) — карточки (`data-cy="l-card"`) рендерятся на сервере и парсятся через cheerio по тому же паттерну, что Ceneo.
-- Ceneo.pl используется как вторичная попытка (после OLX, до статики) — иногда всё же отдаёт реальные данные, но чаще анти-бот заглушку.
-- Статические ориентировочные цены (`static-parts-prices.ts`, помечены ★) — финальный fallback, если и OLX, и Ceneo не нашли ничего релевантного по конкретному типу повреждения.
-- Fallback теперь per-damage-type, а не all-or-nothing (`pipeline.ts#fetchPartsForDamageType`): если для одного типа повреждения OLX/Ceneo не нашли ничего, а для другого нашли — не теряем то, что реально нашли.
+### Источники цен на запчасти (Allegro → OLX → Ceneo → статика)
+- **Allegro (`allegro-parts-fetcher.ts`) — первичный источник.** Цепочка: REST API (`allegro-api-client.ts`, если приложение верифицировано) → HTML-парсинг `__listing_StoreState` → Scrapfly (`SCRAPFLY_API_KEY`, опционально) → пустой результат. Без верификации API и без Scrapfly на многих IP срабатывает DataDome — тогда fallback на OLX.
+- **Allegro REST API — проверено живьём, недоступен без верификации приложения.** `POST /auth/oauth/token` (client_credentials) успешно выдаёт токен, но `GET /offers/listing` возвращает `403`. С 2025-2026 Allegro приостановил выдачу верификации новым приложениям. Ключи: `ALLEGRO_CLIENT_ID`/`ALLEGRO_CLIENT_SECRET` в `.env`.
+- **OLX ("Części do telefonów", `olx-parts-fetcher.ts`) — вторичный источник.** Медианный фильтр цен (`parts-shared.ts#filterPartsByMedianPrice`) отсекает нереалистично дешёвые выбросы (экран за 27 zł).
+- Ceneo.pl — третья попытка; чаще анти-бот заглушка.
+- Статические ориентировочные цены (`static-parts-prices.ts`, помечены ★) — финальный fallback.
+- `estimatePartsCost()` считает **медиану** по типу повреждения, не минимум.
 
 ### Kimovil (liquidity-calculator)
 - `src/server/liquidity-calculator/kimovil-fetcher.ts` работает через autocomplete + скрапинг страницы отзывов — может ломаться при изменении вёрстки/API Kimovil.

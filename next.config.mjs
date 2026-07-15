@@ -11,10 +11,6 @@ const security_headers = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
-  experimental: {
-    // На Linux VPS с Bus error на нативном SWC — WASM (см. scripts/next-build.sh).
-    useWasmBinary: true,
-  },
   async headers() {
     return [
       {

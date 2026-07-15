@@ -16,6 +16,7 @@ import type { AnalyzedDevice } from "@/lib/api";
 import { DamageTag } from "@/components/DamageTag/DamageTag";
 import { isSuspiciousListing } from "@/lib/listing-flags";
 import { HeaderActions } from "@/components/HeaderActions/HeaderActions";
+import { PhotoGallery } from "@/components/PhotoGallery/PhotoGallery";
 import { StatBar } from "@/components/StatBar/StatBar";
 import type { AppLocale } from "@/i18n/config";
 import styles from "./page.module.scss";
@@ -79,7 +80,6 @@ export default function DeviceDetailPage() {
   const t_app = useTranslations("app");
   const locale = useLocale() as AppLocale;
   const [device, set_device] = useState<AnalyzedDevice | null>(null);
-  const [active_photo, set_active_photo] = useState(0);
   const [loading, set_loading] = useState(true);
   const [error, set_error] = useState<string | null>(null);
 
@@ -150,37 +150,13 @@ export default function DeviceDetailPage() {
           <Grid size={{ xs: 12, md: 5 }}>
             <Paper variant="outlined" sx={{ overflow: "hidden" }}>
               {device.photos.length > 0 ? (
-                <>
-                  <Box
-                    component="img"
-                    src={device.photos[active_photo]}
-                    alt={device.title}
-                    className={styles.detail_photo_main}
-                    sx={{
-                      width: "100%",
-                      aspectRatio: "4/3",
-                      objectFit: "contain",
-                      display: "block",
-                      bgcolor: "background.default",
-                    }}
-                  />
-                  {device.photos.length > 1 && (
-                    <Stack direction="row" spacing={1} className={styles.detail_photo_thumbs_row}>
-                      {device.photos.map((photo, i) => (
-                        <Button
-                          key={i}
-                          onClick={() => set_active_photo(i)}
-                          sx={{
-                            minWidth: 64, p: 0, borderRadius: 2, overflow: "hidden",
-                            border: 2, borderColor: i === active_photo ? "primary.main" : "transparent",
-                          }}
-                        >
-                          <Box component="img" src={photo} alt={`${i + 1}`} sx={{ width: 64, height: 48, objectFit: "cover" }} />
-                        </Button>
-                      ))}
-                    </Stack>
-                  )}
-                </>
+                <PhotoGallery
+                  photos={device.photos}
+                  alt={device.title}
+                  variant="detail"
+                  show_thumbnails
+                  test_id="detail-photo-gallery"
+                />
               ) : (
                 <Box sx={{ aspectRatio: "4/3", display: "flex", alignItems: "center", justifyContent: "center", color: "text.disabled" }}>
                   <Smartphone size={48} aria-hidden />
@@ -282,7 +258,7 @@ export default function DeviceDetailPage() {
                     icon={<Battery size={14} />}
                     label={`${t("battery_health")}: ${device.battery_health_percent}%`}
                     size="small"
-                    color={device.battery_health_percent < 85 ? "warning" : "default"}
+                    color={device.damage_types.includes("battery") ? "warning" : "default"}
                   />
                 )}
               </Stack>

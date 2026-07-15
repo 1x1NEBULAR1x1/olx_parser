@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Monitor, Moon, Sun } from "lucide-react";
 import styles from "./ThemeSwitcher.module.scss";
-import { applyTheme, THEME_STORAGE_KEY, type ThemeChoice } from "@/lib/theme";
+import { applyTheme, readThemeChoice, THEME_STORAGE_KEY, type ThemeChoice } from "@/lib/theme";
 
 const THEME_ICONS: Record<ThemeChoice, typeof Sun> = {
   light: Sun,
@@ -21,10 +21,13 @@ interface ThemeSwitcherProps {
 export function ThemeSwitcher({ variant = "inline" }: ThemeSwitcherProps) {
   const t = useTranslations("theme");
   const [choice, set_choice] = useState<ThemeChoice>("system");
+  const [mounted, set_mounted] = useState(false);
 
-  useEffect(() => {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY) as ThemeChoice | null;
-    if (stored) set_choice(stored);
+  useLayoutEffect(() => {
+    const stored = readThemeChoice();
+    set_choice(stored);
+    applyTheme(stored);
+    set_mounted(true);
   }, []);
 
   function selectTheme(next_choice: ThemeChoice) {
@@ -38,6 +41,7 @@ export function ThemeSwitcher({ variant = "inline" }: ThemeSwitcherProps) {
       className={[
         styles.switcher,
         variant === "stacked" ? styles.switcher_stacked : "",
+        !mounted ? styles.switcher_pending : "",
       ].join(" ")}
       role="group"
       aria-label={t("label")}

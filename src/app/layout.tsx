@@ -5,6 +5,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import { buildAntiFoucScript } from "@/lib/theme";
 import { MuiProvider } from "@/components/MuiProvider/MuiProvider";
 import { AuthProvider } from "@/components/AuthProvider/AuthProvider";
+import { ThemeInit } from "@/components/ThemeInit/ThemeInit";
 import "./globals.scss";
 
 const inter = Inter({
@@ -35,6 +36,7 @@ export default async function RootLayout({
       </head>
       <body className={inter.className}>
         <NextIntlClientProvider locale={locale} messages={messages}>
+          <ThemeInit />
           <AuthProvider>
             <MuiProvider>{children}</MuiProvider>
           </AuthProvider>

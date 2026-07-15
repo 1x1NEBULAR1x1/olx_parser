@@ -154,6 +154,7 @@ export default {
     admin_section_hint: "Globalne parametry skanowania. Tylko dla administratora.",
     battery_threshold_label: "Próg wymiany baterii, %",
     battery_threshold_hint: "Jeśli wykryty w ogłoszeniu % baterii jest niższy niż ta wartość — urządzenie zostanie oznaczone jako wymagające wymiany baterii.",
+    battery_threshold_personal_hint: "Twój osobisty próg: poniżej tego % baterii ogłoszenie traktujemy jako usterkę baterii w Twojej liście, a koszt naprawy jest przeliczany.",
     applies_next_scan: "Zostanie zastosowane przy następnym skanowaniu.",
     applies_feed_immediately: "Zadziała na Twojej liście od razu po zapisaniu.",
     save_personal: "Zapisz filtry",

@@ -154,6 +154,7 @@ export default {
     admin_section_hint: "Global scan parameters. Admin only.",
     battery_threshold_label: "Battery replacement threshold, %",
     battery_threshold_hint: "If the battery % detected in a listing is below this value, the device will be flagged as needing a battery replacement.",
+    battery_threshold_personal_hint: "Your personal threshold: below this battery %, the listing is treated as a battery fault in your feed and repair cost is recalculated.",
     applies_next_scan: "Applies to the next scan run.",
     applies_feed_immediately: "Takes effect on your feed immediately after saving.",
     save_personal: "Save filters",

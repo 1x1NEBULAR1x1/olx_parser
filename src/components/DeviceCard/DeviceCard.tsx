@@ -7,7 +7,8 @@ import { useTranslations } from "next-intl";
 import { isSuspiciousListing } from "@/lib/listing-flags";
 import { updateUserListingAction } from "@/lib/api";
 import type { AnalyzedDevice } from "@/lib/api";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { PhotoGallery } from "@/components/PhotoGallery/PhotoGallery";
+import { useState } from "react";
 
 interface DeviceCardProps {
   device: AnalyzedDevice;
@@ -36,8 +37,6 @@ export function DeviceCard({ device, onNavigate, onListingChange }: DeviceCardPr
   const t_auth = useTranslations("auth");
   const t_app = useTranslations("app");
   const [is_busy, set_is_busy] = useState(false);
-  const [active_photo, set_active_photo] = useState(0);
-  const gallery_ref = useRef<HTMLDivElement>(null);
 
   const repairability_display =
     device.repairability_score !== null && device.repairability_scale
@@ -58,83 +57,6 @@ export function DeviceCard({ device, onNavigate, onListingChange }: DeviceCardPr
     || device.release_year !== null
     || device.battery_health_percent !== null;
 
-  const syncActivePhoto = useCallback(() => {
-    const gallery = gallery_ref.current;
-    if (!gallery || photo_count <= 1) return;
-    const slide_width = gallery.clientWidth;
-    if (slide_width <= 0) return;
-    const next_index = Math.round(gallery.scrollLeft / slide_width);
-    set_active_photo(Math.min(Math.max(next_index, 0), photo_count - 1));
-  }, [photo_count]);
-
-  function scrollToPhoto(index: number) {
-    const gallery = gallery_ref.current;
-    if (!gallery) return;
-    gallery.scrollTo({ left: gallery.clientWidth * index, behavior: "smooth" });
-    set_active_photo(index);
-  }
-
-  useEffect(() => {
-    const gallery = gallery_ref.current;
-    if (!gallery || photo_count <= 1) return;
-
-    let origin: { x: number; y: number } | null = null;
-    let gesture_axis: "none" | "x" | "y" = "none";
-    let last_touch_x = 0;
-    const gesture_threshold = 8;
-
-    function resetGesture() {
-      origin = null;
-      gesture_axis = "none";
-    }
-
-    function onTouchStart(event: TouchEvent) {
-      if (event.touches.length !== 1) {
-        resetGesture();
-        return;
-      }
-      const touch = event.touches[0];
-      origin = { x: touch.clientX, y: touch.clientY };
-      last_touch_x = touch.clientX;
-      gesture_axis = "none";
-    }
-
-    function onTouchMove(event: TouchEvent) {
-      if (!gallery || !origin || event.touches.length !== 1) return;
-
-      const touch = event.touches[0];
-      const delta_x = touch.clientX - origin.x;
-      const delta_y = touch.clientY - origin.y;
-
-      if (gesture_axis === "none") {
-        if (Math.abs(delta_x) < gesture_threshold && Math.abs(delta_y) < gesture_threshold) return;
-        gesture_axis = Math.abs(delta_x) > Math.abs(delta_y) ? "x" : "y";
-      }
-
-      if (gesture_axis === "y") return;
-
-      const step = last_touch_x - touch.clientX;
-      last_touch_x = touch.clientX;
-      if (step !== 0) {
-        gallery.scrollLeft += step;
-        syncActivePhoto();
-      }
-      event.preventDefault();
-    }
-
-    gallery.addEventListener("touchstart", onTouchStart, { passive: true });
-    gallery.addEventListener("touchmove", onTouchMove, { passive: false });
-    gallery.addEventListener("touchend", resetGesture, { passive: true });
-    gallery.addEventListener("touchcancel", resetGesture, { passive: true });
-
-    return () => {
-      gallery.removeEventListener("touchstart", onTouchStart);
-      gallery.removeEventListener("touchmove", onTouchMove);
-      gallery.removeEventListener("touchend", resetGesture);
-      gallery.removeEventListener("touchcancel", resetGesture);
-    };
-  }, [photo_count, syncActivePhoto]);
-
   async function handleListingAction(action: "favorite" | "unfavorite" | "hide") {
     if (is_busy) return;
     set_is_busy(true);
@@ -150,48 +72,12 @@ export function DeviceCard({ device, onNavigate, onListingChange }: DeviceCardPr
     <article className={styles.card}>
       <div className={styles.card_media}>
         {photo_count > 0 ? (
-          <>
-            <div
-              ref={gallery_ref}
-              className={styles.card_gallery}
-              data-testid="card-photo-gallery"
-              onScroll={syncActivePhoto}
-            >
-              {device.photos.map((photo, index) => (
-                <img
-                  key={`${device.id}-${index}`}
-                  src={photo}
-                  alt={`${device.title} — ${index + 1}`}
-                  className={styles.card_image}
-                  loading={index === 0 ? "lazy" : "lazy"}
-                  draggable={false}
-                />
-              ))}
-            </div>
-            {photo_count > 1 && (
-              <>
-                <div className={styles.card_gallery_counter} aria-hidden>
-                  {active_photo + 1}/{photo_count}
-                </div>
-                <div className={styles.card_gallery_dots} role="tablist" aria-label={t("photos")}>
-                  {device.photos.map((_, index) => (
-                    <button
-                      key={`dot-${device.id}-${index}`}
-                      type="button"
-                      role="tab"
-                      aria-selected={index === active_photo}
-                      aria-label={t("photo_index", { index: index + 1 })}
-                      className={[
-                        styles.card_gallery_dot,
-                        index === active_photo ? styles.card_gallery_dot_active : "",
-                      ].join(" ")}
-                      onClick={() => scrollToPhoto(index)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </>
+          <PhotoGallery
+            photos={device.photos}
+            alt={device.title}
+            variant="card"
+            test_id="card-photo-gallery"
+          />
         ) : (
           <div className={styles.card_image_placeholder}>
             <Smartphone size={40} aria-hidden />
@@ -259,7 +145,7 @@ export function DeviceCard({ device, onNavigate, onListingChange }: DeviceCardPr
             {device.battery_health_percent !== null && (
               <span className={[
                 styles.card_badge,
-                device.battery_health_percent < 85 ? styles.card_badge_warning : "",
+                device.damage_types.includes("battery") ? styles.card_badge_warning : "",
               ].join(" ")}>
                 <Battery size={12} aria-hidden /> {device.battery_health_percent}%
               </span>

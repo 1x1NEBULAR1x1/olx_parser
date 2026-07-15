@@ -8,6 +8,8 @@ interface FetchOlxListingsPageOptions {
   category_id?: string;
   owner_type?: string;
   state_filter?: string;
+  /** Текстовый поиск (GraphQL key: query) */
+  query?: string;
   sl?: string;
   cookie?: string;
 }
@@ -32,7 +34,10 @@ interface FetchOlxListingsPageResult {
 }
 
 
-function createSearchParameters(options: Required<Pick<FetchOlxListingsPageOptions, "offset" | "limit" | "category_id" | "owner_type" | "state_filter">> & Pick<FetchOlxListingsPageOptions, "sl">): SearchParameter[] {
+function createSearchParameters(
+  options: Required<Pick<FetchOlxListingsPageOptions, "offset" | "limit" | "category_id" | "owner_type" | "state_filter">>
+    & Pick<FetchOlxListingsPageOptions, "sl" | "query">,
+): SearchParameter[] {
   return [
     { key: "offset", value: String(options.offset) },
     { key: "limit", value: String(options.limit) },
@@ -40,6 +45,7 @@ function createSearchParameters(options: Required<Pick<FetchOlxListingsPageOptio
     { key: "owner_type", value: options.owner_type },
     { key: "filter_enum_state[0]", value: options.state_filter },
     { key: "suggest_filters", value: "true" },
+    ...(options.query ? [{ key: "query", value: options.query }] : []),
     ...(options.sl ? [{ key: "sl", value: options.sl }] : []),
   ];
 }
@@ -50,6 +56,7 @@ export async function fetchOlxListingsPage({
   category_id = "1839",
   owner_type = "private",
   state_filter = "damaged",
+  query = "",
   sl = "",
   cookie = "",
 }: FetchOlxListingsPageOptions = {}): Promise<FetchOlxListingsPageResult> {
@@ -64,6 +71,7 @@ export async function fetchOlxListingsPage({
         category_id,
         owner_type,
         state_filter,
+        query,
         sl,
       }),
     },

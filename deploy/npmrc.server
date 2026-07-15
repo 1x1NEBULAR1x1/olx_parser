@@ -1,4 +1,0 @@
-# Только для Linux VPS (копируется в корень в deploy/build.sh).
-# Блокирует установку нативных @next/swc-linux-*, lightningcss-linux-*, oxide-linux-*,
-# которые на этом классе VPS дают Bus error. WASM-пакеты — в dependencies.
-optional=false

@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireAdminUser } from "@/server/auth-guards";
+import { requireApprovedUser } from "@/server/auth-guards";
 import { isScanningEffective, triggerScan } from "@/server/scan-manager";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const auth_result = await requireAdminUser();
+  const auth_result = await requireApprovedUser();
   if ("response" in auth_result) return auth_result.response;
 
   if (await isScanningEffective()) {

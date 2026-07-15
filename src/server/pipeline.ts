@@ -22,7 +22,9 @@ import {
   getRepairabilityStub,
 } from "./repair-parts-stubs";
 import { fetchCeneoParts } from "./ceneo-fetcher";
+import { fetchAllegroParts } from "./allegro-parts-fetcher";
 import { fetchOlxParts, buildOlxPartsSearchUrl } from "./olx-parts-fetcher";
+import { prefetchOlxMarketPrices } from "./olx-market-price-fetcher";
 import {
   getAppSettings,
   getModelCache, upsertModelCache,
@@ -100,18 +102,11 @@ function withTimeout<T>(promise: Promise<T>, timeout_ms: number, label: string):
   });
 }
 
-// Цепочка источников цен на запчасти, на каждый damage_type отдельно (не
-// all-or-nothing): если по конкретному типу повреждения ничего не нашлось у
-// одного источника — пробуем следующий, а не отбрасываем то, что уже нашли
-// по другим типам.
-//   1. OLX ("Części do telefonów") — основной источник: тот же сайт, что и
-//      объявления с телефонами, никакой анти-бот защиты не встречено.
-//   2. Ceneo.pl — вторичная попытка (иногда отдаёт реальные данные, иногда
-//      анти-бот заглушку — см. TODO.md).
-//   3. Статические ориентировочные цены (★) — финальный fallback.
-// Allegro REST API (/offers/listing) недоступен даже с валидными
-// client_credentials — приложение требует ручной верификации, которую
-// Allegro сейчас не выдаёт новым приложениям (проверено живым запросом).
+// Цепочка источников цен на запчасти, на каждый damage_type отдельно:
+//   1. Allegro (REST API / HTML / опционально Scrapfly) — приоритетный источник.
+//   2. OLX ("Części do telefonów") — fallback без DataDome.
+//   3. Ceneo.pl — вторичная попытка.
+//   4. Статические ориентировочные цены (★) — финальный fallback.
 async function fetchPartsForDamageType(
   brand: string,
   model_short: string,
@@ -123,6 +118,17 @@ async function fetchPartsForDamageType(
   const keyword = PART_SEARCH_KEYWORDS[damage_type];
 
   if (keyword) {
+    const allegro_result = await fetchAllegroParts(
+      brand,
+      model_short,
+      damage_type,
+      keyword,
+      config.pipeline.allegro_parts_per_model,
+    );
+    if (allegro_result.parts.length > 0) {
+      return allegro_result.parts.map((part) => ({ ...part, damage_type }));
+    }
+
     const olx_result = await fetchOlxParts(
       brand,
       model_short,
@@ -418,7 +424,6 @@ interface RawAnalyzedListing {
 
 async function analyzeSingleListing(
   listing: ParsedOlxListing,
-  battery_threshold_percent: number,
   cache_ttl_hours: number,
 ): Promise<RawAnalyzedListing | null> {
   const brand = extractBrand(listing.title);
@@ -436,7 +441,7 @@ async function analyzeSingleListing(
   let seller_member_since: string | null = null;
 
   try {
-    const signals = await extractOlxListingSignals(listing, battery_threshold_percent);
+    const signals = await extractOlxListingSignals(listing, null);
     damage_types = signals.damage_types;
     post_summary = signals.post_summary;
     device_query = signals.device_query || listing.title;
@@ -454,6 +459,10 @@ async function analyzeSingleListing(
 
   // Поиск iFixit и поиск/оценка цен на запчасти не зависят друг от друга —
   // раньше шли строго последовательно (запчасти ждали iFixit впустую).
+  const parts_damage_types = battery_health_percent !== null && !damage_types.includes("battery")
+    ? [...damage_types, "battery"]
+    : damage_types;
+
   const [ifixit_data, allegro_data] = await Promise.all([
     resolveIfixitDataForQuery(device_query, brand, model_key, cache_ttl_hours),
     fetchPartsData(
@@ -461,7 +470,7 @@ async function analyzeSingleListing(
       device_query,
       model_label,
       model_key,
-      damage_types,
+      parts_damage_types,
       cache_ttl_hours,
       storage_gb,
     ),
@@ -787,6 +796,25 @@ async function finalizeDevices(
     }),
   );
 
+  const models_still_missing_price = Array.from(model_keys_needing_cache_lookup)
+    .filter((composite_key) => !cached_price_by_composite_key.has(composite_key))
+    .map((composite_key) => {
+      const [brand, model_key] = composite_key.split("::");
+      const sample = raw_listings.find((raw) => raw.brand === brand && raw.model_key === model_key);
+      return {
+        brand,
+        model_key,
+        model_label: sample?.model_label ?? model_key,
+      };
+    });
+
+  if (models_still_missing_price.length > 0) {
+    const fetched_prices = await prefetchOlxMarketPrices(models_still_missing_price, cache_ttl_hours);
+    for (const [composite_key, price] of fetched_prices) {
+      cached_price_by_composite_key.set(composite_key, price);
+    }
+  }
+
   pipeline_log.info("Finalizing: подготовка медиан", {
     devices: total,
     cache_lookups: model_keys_needing_cache_lookup.size,
@@ -863,7 +891,6 @@ export async function runFullPipeline(
   // следующему запуску пайплайна, а не "на лету" к уже сохранённым
   // устройствам предыдущего скана.
   const app_settings = await getAppSettings();
-  const battery_threshold_percent = app_settings.battery_health_threshold_percent;
   const cache_ttl_hours = app_settings.cache_ttl_hours;
 
   let processed_count = 0;
@@ -876,7 +903,6 @@ export async function runFullPipeline(
     (listing) => withTimeout(
       analyzeSingleListing(
         listing,
-        battery_threshold_percent,
         cache_ttl_hours,
       ),
       listing_timeout_ms,

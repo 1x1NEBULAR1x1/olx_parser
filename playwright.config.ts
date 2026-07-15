@@ -30,9 +30,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run build && E2E_SKIP_AUTH=true PORT=${PORT} npm run start`,
-    url: BASE_URL,
+    command: `E2E_SKIP_AUTH=true PORT=${PORT} npm run start`,
+    url: `${BASE_URL}/api/health`,
     reuseExistingServer: false,
-    timeout: 180_000,
+    timeout: 120_000,
   },
 });

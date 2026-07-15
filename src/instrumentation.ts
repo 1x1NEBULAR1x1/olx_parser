@@ -6,9 +6,15 @@ export async function register() {
     // Чистим "зависшие" ScanRun от предыдущего процесса до первого triggerScan(),
     // иначе isScanRunningInDb() навсегда решит, что скан ещё идёт.
     await reconcileStaleScanRuns();
-    void triggerScan();
+
+    const skip_auto_scan = process.env.E2E_SKIP_AUTH === "true" || process.env.E2E_SKIP_SCAN === "true";
+    if (!skip_auto_scan) {
+      void triggerScan();
+    }
 
     const settings = await getAppSettings();
-    rescheduleAutoScan(settings.auto_scan_interval_minutes);
+    if (!skip_auto_scan) {
+      rescheduleAutoScan(settings.auto_scan_interval_minutes);
+    }
   }
 }

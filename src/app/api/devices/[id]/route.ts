@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/server/auth-guards";
 import { getDeviceById } from "@/server/devices-repository";
 import { getUserListingIds } from "@/server/user-listings-repository";
+import { getUserDisplaySettings } from "@/server/user-display-settings-repository";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,10 +22,11 @@ export async function GET(
   }
 
   const listing_ids = await getUserListingIds(auth_result.user.id);
+  const display_settings = await getUserDisplaySettings(auth_result.user.id);
   const device = await getDeviceById(device_id, {
     favorite_ids: new Set(listing_ids.favorite_ids),
     hidden_ids: new Set(listing_ids.hidden_ids),
-  });
+  }, display_settings);
 
   if (!device) {
     return NextResponse.json({ error: "Устройство не найдено" }, { status: 404 });

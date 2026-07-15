@@ -238,6 +238,7 @@ model UserDisplaySettings {
   junk_min_release_year Int      @default(2017)
   exclude_iphone        Boolean  @default(false)
   exclude_android       Boolean  @default(false)
+  battery_health_threshold_percent Int @default(80)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }

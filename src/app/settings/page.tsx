@@ -71,6 +71,7 @@ export default function SettingsPage() {
         exclude_iphone,
         exclude_android,
         junk_min_release_year: junk_min_year,
+        battery_health_threshold_percent: threshold,
       });
       set_saved_personal_at(Date.now());
     } finally {
@@ -83,7 +84,6 @@ export default function SettingsPage() {
     set_saving_admin(true);
     try {
       await updateSettings({
-        battery_health_threshold_percent: threshold,
         auto_scan_interval_minutes: auto_scan_minutes,
         cache_ttl_hours,
       });
@@ -207,6 +207,28 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
+                <div className="app-panel p-5 sm:p-6">
+                  <label className="block text-sm font-bold app-text mb-1">
+                    {t("battery_threshold_label")}
+                  </label>
+                  <p className="text-xs app-text-muted mb-4">{t("battery_threshold_personal_hint")}</p>
+
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={threshold}
+                      onChange={(e) => set_threshold(Number(e.target.value))}
+                      className="flex-1 accent-[var(--color-primary)]"
+                    />
+                    <span className="w-16 text-right text-lg font-black app-accent tabular-nums">
+                      {threshold}%
+                    </span>
+                  </div>
+                </div>
+
                 <div>
                   <p className="text-xs app-text-faint mb-3">{t("applies_feed_immediately")}</p>
                   <div className="flex items-center gap-3">
@@ -232,28 +254,6 @@ export default function SettingsPage() {
                 <p className="text-xs app-text-muted mb-4">{t("admin_section_hint")}</p>
 
                 <div className="flex flex-col gap-5">
-                  <div className="app-panel p-5 sm:p-6">
-                    <label className="block text-sm font-bold app-text mb-1">
-                      {t("battery_threshold_label")}
-                    </label>
-                    <p className="text-xs app-text-muted mb-4">{t("battery_threshold_hint")}</p>
-
-                    <div className="flex items-center gap-4">
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={threshold}
-                        onChange={(e) => set_threshold(Number(e.target.value))}
-                        className="flex-1 accent-[var(--color-primary)]"
-                      />
-                      <span className="w-16 text-right text-lg font-black app-accent tabular-nums">
-                        {threshold}%
-                      </span>
-                    </div>
-                  </div>
-
                   <div className="app-panel p-5 sm:p-6">
                     <label className="block text-sm font-bold app-text mb-1">
                       {t("auto_scan_label")}

@@ -5,6 +5,7 @@ export interface UserDisplaySettingsData {
   junk_min_release_year: number;
   exclude_iphone: boolean;
   exclude_android: boolean;
+  battery_health_threshold_percent: number;
 }
 
 function toUserDisplaySettingsData(settings: {
@@ -12,12 +13,14 @@ function toUserDisplaySettingsData(settings: {
   junk_min_release_year: number;
   exclude_iphone: boolean;
   exclude_android: boolean;
+  battery_health_threshold_percent: number;
 }): UserDisplaySettingsData {
   return {
     exclude_junk_listings: settings.exclude_junk_listings,
     junk_min_release_year: settings.junk_min_release_year,
     exclude_iphone: settings.exclude_iphone,
     exclude_android: settings.exclude_android,
+    battery_health_threshold_percent: settings.battery_health_threshold_percent,
   };
 }
 

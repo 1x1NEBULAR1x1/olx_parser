@@ -172,7 +172,6 @@ export async function startScan(): Promise<{ message: string }> {
 }
 
 export interface AppSettings {
-  battery_health_threshold_percent: number;
   auto_scan_interval_minutes: number;
   cache_ttl_hours: number;
 }
@@ -182,6 +181,7 @@ export interface UserDisplaySettings {
   junk_min_release_year: number;
   exclude_iphone: boolean;
   exclude_android: boolean;
+  battery_health_threshold_percent: number;
 }
 
 export interface SettingsResponse extends AppSettings, UserDisplaySettings {

@@ -5,6 +5,7 @@ import { buildDevicesFilterMeta, type DeviceFilterRow } from "./devices-filter-m
 import { evaluateJunkStatus, type JunkFilterSettings } from "./junk-filter";
 import { isPlatformExcluded, type PlatformFilterSettings } from "./platform-filter";
 import type { UserDisplaySettingsData } from "./user-display-settings-repository";
+import { applyUserDeviceView } from "./user-device-view";
 import { createLogger } from "./logger";
 
 const db_log = createLogger("db");
@@ -263,7 +264,10 @@ export async function getLatestDevicesPage(
     });
     const order_by_id = new Map(slice_ids.map((id, index) => [id, index]));
     devices = full_devices
-      .map((device) => mapDeviceToAnalyzedDevice(device, { favorite_ids: favorite_set, hidden_ids: hidden_set }))
+      .map((device) => {
+        const mapped = mapDeviceToAnalyzedDevice(device, { favorite_ids: favorite_set, hidden_ids: hidden_set });
+        return display_settings ? applyUserDeviceView(mapped, display_settings) : mapped;
+      })
       .sort((a, b) => (order_by_id.get(a.id) ?? 0) - (order_by_id.get(b.id) ?? 0));
   }
 
@@ -385,10 +389,12 @@ export async function getLatestDevices(): Promise<{ devices: AnalyzedDevice[]; c
 export async function getDeviceById(
   id: number,
   listing_context?: { favorite_ids: Set<number>; hidden_ids: Set<number> },
+  display_settings?: UserDisplaySettingsData,
 ): Promise<AnalyzedDevice | null> {
   const device = await prisma.device.findUnique({ where: { id }, include: { parts: true } });
   if (!device) return null;
-  return mapDeviceToAnalyzedDevice(device, listing_context);
+  const mapped = mapDeviceToAnalyzedDevice(device, listing_context);
+  return display_settings ? applyUserDeviceView(mapped, display_settings) : mapped;
 }
 
 export async function createScanRun(): Promise<string> {

@@ -535,9 +535,7 @@ export interface OlxListingSignals {
  * сразу после этого вызова, а не ждать iFixit впустую перед тем, как вообще
  * начать искать запчасти.
  *
- * battery_threshold_percent приходит из AppSettings (настраивается пользователем)
- * и переопределяет ключевую эвристику батареи, если в тексте объявления есть
- * явный процент.
+ * Порог АКБ больше не применяется на сервере — только извлекается % из текста.
  */
 export async function extractOlxListingSignals(
   listing: ParsedOlxListing,
