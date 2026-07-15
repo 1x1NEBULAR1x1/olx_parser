@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireApprovedUser } from "@/server/auth-guards";
+import { requireApprovedUser } from "@/server/auth/auth-guards";
 import {
   getNotificationSettings, updateNotificationSettings, type NotificationSettingsData,
-} from "@/server/devices-repository";
-import { config } from "@/server/config";
+} from "@/server/repositories/devices-repository";
+import { config } from "@/server/shared/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

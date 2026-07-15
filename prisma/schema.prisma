@@ -17,10 +17,30 @@ model ScanRun {
   stage              String?   // "fetching_listings" | "analyzing" | "finalizing" | "saving"
   total_listings     Int?
   processed_listings Int       @default(0)
+  issues_count       Int        @default(0)
+  warnings_count     Int        @default(0)
   devices            Device[]
+  scan_issues        ScanIssue[]
 
   @@index([status])
   @@index([started_at])
+}
+
+model ScanIssue {
+  id         Int      @id @default(autoincrement())
+  scan_id    String
+  scan       ScanRun  @relation(fields: [scan_id], references: [id], onDelete: Cascade)
+  listing_id Int?
+  olx_url    String?
+  title      String?
+  severity   String   // "error" | "warning"
+  kind       String
+  message    String
+  created_at DateTime @default(now())
+
+  @@index([scan_id])
+  @@index([severity])
+  @@index([created_at])
 }
 
 model Device {
@@ -116,6 +136,8 @@ model Part {
   url         String
   image       String?
   damage_type String?
+  is_estimate Boolean @default(false)
+  source      String?
 
   device_id   Int
   device      Device  @relation(fields: [device_id], references: [id], onDelete: Cascade)

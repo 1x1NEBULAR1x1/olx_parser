@@ -5,6 +5,15 @@
 процесс/порт, устранение CORS), убраны. Старые `backend/TODO.md` и
 `frontend/TODO.md` слиты сюда перед удалением папок.
 
+## Архитектура
+
+- [x] **FSD-реструктуризация** — `components/`, `hooks/`, `store/`, `lib/` мигрированы в слои `shared/`, `entities/`, `features/`, `widgets/`, `views/` (алиас `@/pages/*`). `app/` — тонкий роутинг.
+- [x] **server/ по слоям** — `repositories/`, `fetchers/`, `scan/`, `domain/`, `shared/`. Скрипты: `scripts/server-restructure.mjs`, `scripts/fix-server-imports.mjs`.
+- [x] **Единый источник типов** — `src/shared/types/{domain,api-contracts}.ts`; `server/types.ts` и `shared/api/client.ts` — re-export.
+- [x] **Рефакторинг pipeline** — `parts-chain.ts` (цепочка запчастей), `run-with-concurrency.ts` (пул воркеров).
+- [x] **ESLint boundaries** — `eslint-plugin-boundaries` v7, `boundaries/dependencies` в `eslint.config.mjs`. `npm run lint` проходит.
+- [x] **Сборка** — `npm run typecheck` + `npm run build` проходят после переименования `src/pages` → `src/views`.
+
 ## Проверено в среде с реальным доступом в интернет
 
 - [x] **Полный прогон pipeline с реальной сетью** — подтверждено несколькими живыми прогонами (`OLX_MAX_PAGES`/`OLX_PAGE_LIMIT` уменьшались для скорости теста):
@@ -26,11 +35,12 @@
 
 Остаточный нюанс: между записью `createScanRun()` (статус "running") и реальным стартом long-running fetch есть небольшое окно, и если процесс сервера убит (`SIGKILL`)/крашится посреди скана, `ScanRun.status` останется "running" навечно (нет watchdog/timeout) — следующий `isScanningEffective()` будет ошибочно считать, что скан идёт, до ручной правки в БД или добавления TTL-проверки (например, "running" дольше N минут → считать stale). Не критично для текущего use-case (нет автоматического перезапуска на проде), но стоит учесть, если появится продовый деплой с рестартами.
 
-### Источники цен на запчасти (Allegro → OLX → Ceneo → статика)
+### Источники цен на запчасти (Allegro → OLX → parts-store → Ceneo → статика)
 - **Allegro (`allegro-parts-fetcher.ts`) — первичный источник.** Цепочка: REST API (`allegro-api-client.ts`, если приложение верифицировано) → HTML-парсинг `__listing_StoreState` → Scrapfly (`SCRAPFLY_API_KEY`, опционально) → пустой результат. Без верификации API и без Scrapfly на многих IP срабатывает DataDome — тогда fallback на OLX.
 - **Allegro REST API — проверено живьём, недоступен без верификации приложения.** `POST /auth/oauth/token` (client_credentials) успешно выдаёт токен, но `GET /offers/listing` возвращает `403`. С 2025-2026 Allegro приостановил выдачу верификации новым приложениям. Ключи: `ALLEGRO_CLIENT_ID`/`ALLEGRO_CLIENT_SECRET` в `.env`.
 - **OLX ("Części do telefonów", `olx-parts-fetcher.ts`) — вторичный источник.** Медианный фильтр цен (`parts-shared.ts#filterPartsByMedianPrice`) отсекает нереалистично дешёвые выбросы (экран за 27 zł).
-- Ceneo.pl — третья попытка; чаще анти-бот заглушка.
+- **parts-store.pl (`parts-store-fetcher.ts`) — третий источник.** Публичный GraphQL `POST https://parts-store.pl/graphql/v1/`, query `productsTextSearch`. Живой тест: HTTP 200 без challenge. Лимитер: `PARTS_STORE_CONCURRENCY=2`, `PARTS_STORE_MIN_INTERVAL_MS=450`. Массовая выгрузка: `npm run prefetch:parts-store` (чанки по `PARTS_STORE_PREFETCH_CHUNK_SIZE`, пауза `PARTS_STORE_PREFETCH_CHUNK_DELAY_MS`, JSON в `data/parts-store-export.json`).
+- Ceneo.pl — четвёртая попытка; чаще анти-бот заглушка.
 - Статические ориентировочные цены (`static-parts-prices.ts`, помечены ★) — финальный fallback.
 - `estimatePartsCost()` считает **медиану** по типу повреждения, не минимум.
 

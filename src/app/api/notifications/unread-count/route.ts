@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireApprovedUser } from "@/server/auth-guards";
-import { getUnreadNotificationsCount } from "@/server/devices-repository";
+import { requireApprovedUser } from "@/server/auth/auth-guards";
+import { getUnreadNotificationsCount } from "@/server/repositories/devices-repository";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

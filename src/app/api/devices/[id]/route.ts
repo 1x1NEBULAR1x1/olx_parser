@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireApprovedUser } from "@/server/auth-guards";
-import { getDeviceById } from "@/server/devices-repository";
-import { getUserListingIds } from "@/server/user-listings-repository";
-import { getUserDisplaySettings } from "@/server/user-display-settings-repository";
+import { requireApprovedUser } from "@/server/auth/auth-guards";
+import { getDeviceById } from "@/server/repositories/devices-repository";
+import { getUserListingIds } from "@/server/repositories/user-listings-repository";
+import { getUserDisplaySettings } from "@/server/repositories/user-display-settings-repository";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApprovedUser } from "@/server/auth-guards";
-import { getLatestDevicesPage } from "@/server/devices-repository";
-import { getScanStatus } from "@/server/scan-manager";
-import { getUserListingIds } from "@/server/user-listings-repository";
-import { getUserDisplaySettings } from "@/server/user-display-settings-repository";
+import { requireApprovedUser } from "@/server/auth/auth-guards";
+import { getLatestDevicesPage } from "@/server/repositories/devices-repository";
+import { getScanStatus } from "@/server/scan/scan-manager";
+import { getUserListingIds } from "@/server/repositories/user-listings-repository";
+import { getUserDisplaySettings } from "@/server/repositories/user-display-settings-repository";
 import type { DevicesListResponse } from "@/server/types";
 
 export const runtime = "nodejs";
@@ -62,6 +62,9 @@ export async function GET(request: NextRequest) {
     total_listings: scan_status.total_listings,
     processed_listings: scan_status.processed_listings,
     percent: scan_status.percent,
+    issues_count: scan_status.issues_count,
+    warnings_count: scan_status.warnings_count,
+    last_scan_id: scan_status.last_scan_id,
     favorite_ids: listing_ids.favorite_ids,
     hidden_ids: listing_ids.hidden_ids,
   };

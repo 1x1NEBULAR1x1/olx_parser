@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
-import { buildAntiFoucScript } from "@/lib/theme";
-import { MuiProvider } from "@/components/MuiProvider/MuiProvider";
-import { AuthProvider } from "@/components/AuthProvider/AuthProvider";
-import { ThemeInit } from "@/components/ThemeInit/ThemeInit";
+import { buildAntiFoucScript } from "@/shared/lib/theme";
+import { MuiProvider } from "@/shared/providers/mui-provider/MuiProvider";
+import { AuthProvider } from "@/shared/providers/auth-provider/AuthProvider";
+import { ThemeInit } from "@/shared/providers/theme-init/ThemeInit";
 import "./globals.scss";
 
 const inter = Inter({

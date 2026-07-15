@@ -1,6 +1,8 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { Box, Button, Paper, Typography } from "@mui/material";
+import { AppShell } from "@/shared/ui/page-layout";
 
 export default function ErrorBoundary({
   error,
@@ -14,20 +16,46 @@ export default function ErrorBoundary({
   const stack = process.env.NODE_ENV === "development" ? error.stack : undefined;
 
   return (
-    <main className="app-shell flex flex-col items-center justify-center p-8 app-text-muted">
-      <h1 className="text-4xl font-black mb-3 app-text">{t("title")}</h1>
-      <p className="text-lg mb-4">{details}</p>
-      {stack && (
-        <pre className="w-full max-w-2xl p-4 rounded-xl overflow-x-auto text-sm bg-[var(--color-surface)] border border-[var(--color-border)]">
-          <code>{stack}</code>
-        </pre>
-      )}
-      <button
-        onClick={reset}
-        className="mt-4 app-btn-primary"
+    <AppShell>
+      <Box
+        component="main"
+        sx={{
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          p: 4,
+          color: "text.secondary",
+        }}
       >
-        {t("retry")}
-      </button>
-    </main>
+        <Typography variant="h1" component="h1" color="text.primary" sx={{ mb: 1.5 }}>
+          {t("title")}
+        </Typography>
+        <Typography variant="body1" sx={{ mb: 2, textAlign: "center" }}>
+          {details}
+        </Typography>
+        {stack && (
+          <Paper
+            variant="outlined"
+            sx={{
+              width: "100%",
+              maxWidth: 640,
+              p: 2,
+              mb: 2,
+              overflow: "auto",
+              fontSize: "0.8125rem",
+            }}
+          >
+            <Box component="pre" sx={{ m: 0, whiteSpace: "pre-wrap" }}>
+              <code>{stack}</code>
+            </Box>
+          </Paper>
+        )}
+        <Button variant="contained" onClick={reset}>
+          {t("retry")}
+        </Button>
+      </Box>
+    </AppShell>
   );
 }

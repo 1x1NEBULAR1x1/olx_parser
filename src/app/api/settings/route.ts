@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireApprovedUser } from "@/server/auth-guards";
-import { getAppSettings, updateAppSettings, type AppSettingsData } from "@/server/devices-repository";
+import { requireApprovedUser } from "@/server/auth/auth-guards";
+import { getAppSettings, updateAppSettings, type AppSettingsData } from "@/server/repositories/devices-repository";
 import {
   getUserDisplaySettings,
   updateUserDisplaySettings,
   type UserDisplaySettingsData,
-} from "@/server/user-display-settings-repository";
-import { rescheduleAutoScan } from "@/server/scan-scheduler";
+} from "@/server/repositories/user-display-settings-repository";
+import { rescheduleAutoScan } from "@/server/scan/scan-scheduler";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

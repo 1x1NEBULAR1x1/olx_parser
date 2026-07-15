@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireApprovedUser } from "@/server/auth-guards";
-import { getScanStatus } from "@/server/scan-manager";
+import { requireApprovedUser } from "@/server/auth/auth-guards";
+import { getScanStatus } from "@/server/scan/scan-manager";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

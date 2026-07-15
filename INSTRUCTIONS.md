@@ -12,84 +12,140 @@
 - **node-cache** — in-memory TTL-кэш для iFixit/Ceneo (не персистентный, сбрасывается при рестарте)
 - **TypeScript 5**, snake_case для переменных, camelCase для функций/методов (см. правило проекта)
 
-## Структура проекта
+## Структура проекта (FSD)
+
+Проект организован по **Feature-Sliced Design**. Next.js `app/` — только тонкий роутинг; логика страниц — в `views/` (алиас `@/pages/*`).
 
 ```
 src/
-  app/                        — Next.js App Router
-    page.tsx                  — главная страница (лента устройств)
-    devices/[id]/page.tsx     — страница устройства
-    layout.tsx, error.tsx, not-found.tsx
-    api/
-      devices/route.ts            — GET список устройств
-      devices/[id]/route.ts       — GET одно устройство
-      scan/status/route.ts        — GET статус скана
-      scan/start/route.ts         — POST запуск скана
-      settings/route.ts           — GET/PATCH настройки приложения (AppSettings)
-      notification-settings/route.ts  — GET/PATCH настройки уведомлений (NotificationSettings)
-      notifications/route.ts          — GET список / PATCH прочитать все / DELETE очистить
-      notifications/unread-count/route.ts — GET счётчик непрочитанных (для бейджа)
-      health/route.ts             — GET health check
-    settings/page.tsx            — страница настроек (батарея, мусор, авто-скан, TTL кэша)
-    notifications/page.tsx            — страница ленты уведомлений
-    notifications/settings/page.tsx   — страница настроек уведомлений о хороших позициях
-  components/                 — ComponentName/ComponentName.tsx + .module.scss
-    DeviceCard/, FilterBar/, DamageTag/, ScanBanner/
-    CheckboxGroup/               — мульти-select чекбоксов с счётчиками (бренды/модели/повреждения/регионы)
-    RangeSlider/                 — двухползунковый (или одинарный, `single`) слайдер диапазона
-    Pagination/                  — клиентская пагинация списка устройств
-    StatBar/                     — горизонтальная шкала (фикс. градиент красный→жёлтый→зелёный + затемняющий оверлей) для ликвидности/прибыльности/ремонтопригодности
-    ThemeSwitcher/                — переключатель светлая/тёмная/системная тема, пишет в localStorage + класс `.dark` на `<html>`
-    NotificationBell/             — иконка колокольчика с бейджем непрочитанных, опрос /api/notifications/unread-count
-    HeaderActions/                — общий "правый блок" шапки (NotificationBell + ThemeSwitcher + LanguageSwitcher), используется на ВСЕХ страницах вместо дублирования
-    MuiProvider/                — ThemeProvider MUI, синхронизация dark/light с классом `.dark` на <html>
-  lib/
-    api.ts                    — типы (AnalyzedDevice, DevicesListResponse, NotificationSettings, AppNotification...) + client-side fetch-функции к /api/*
-    theme.ts                  — ThemeChoice, resolveEffectiveTheme, applyTheme, buildAntiFoucScript (анти-FOUC инлайн-скрипт для layout.tsx)
-    intl/
-      locales/pl.ts           — польские переводы (все тексты, по namespace)
-      useTranslations.ts      — хук useTranslations(namespace)
-  store/
-    filters-store.ts          — zustand + persist (localStorage) для FilterValues главной страницы
-    scroll-store.ts           — zustand + persist: позиция скролла ленты + номер страницы при переходе в /devices/[id]
-  server/                     — бизнес-логика, ТОЛЬКО Node.js runtime (не импортировать из client components)
-    model-line-extractor.ts   — extractModelLine(brand, model_key), getModelLineSortKey() — линейки Samsung/Apple/Xiaomi…
-    config.ts                 — все настройки из env (cache TTL по умолчанию, pipeline, telegram.bot_token/chat_id)
-    types.ts                  — AnalyzedDevice, AllegroPart и др. (server-side копии типов)
-    cache.ts                  — in-memory L1-кэши: ifixit, allegro/parts (node-cache) — поверх БД-кэша (L2, см. ModelCache/PartsCostCache)
-    brand-extractor.ts        — extractBrand(title), estimateMarketSellPrice(brand, price, is_damaged) (damage-aware fallback-эвристика)
-    model-normalizer.ts       — extractModelKey(brand, title) → {model_key, model_label} (канонический ключ модели)
-    model-key-clusterer.ts    — clusterModelKeys(pairs) — пост-дедуп model_key внутри скана (регистр/пробелы/опечатки)
-    junk-filter.ts            — evaluateJunkStatus(...) — "режим исключения мусора" (старые/лоты/сервисы/нереалистичные цены)
-    profitability.ts          — calculateProfitability({price_buy, parts, market_sell_price, ...})
-    concurrency-limiter.ts    — createConcurrencyLimiter(max, min_interval_ms) + fetchWithTimeout()
-    olx-parts-fetcher.ts      — скрапер цен на запчасти с OLX "Części do telefonów" (основной источник)
-    ceneo-fetcher.ts          — скрапер цен на запчасти с Ceneo.pl (вторичный источник, часто анти-бот)
-    static-parts-prices.ts    — статические fallback-оценки цен на запчасти (★)
-    pipeline.ts               — runFullPipeline(on_progress?) → AnalyzedDevice[] (двухфазный оркестратор, computeConditionScore, L1+L2 кэш-резолверы)
-    scan-manager.ts           — triggerScan / getScanStatus / isScanningEffective, вызывает checkAndNotify после сохранения устройств
-    scan-scheduler.ts         — rescheduleAutoScan(minutes) — node-cron задача авто-актуализации по AppSettings.auto_scan_interval_minutes
-    notifier.ts               — checkAndNotify(devices) — фильтр по NotificationSettings + дедуп (NotifiedListing) + Telegram
-    devices-repository.ts     — весь доступ к Prisma (Device/ScanRun/Part/AppSettings/ModelCache/PartsCostCache/NotificationSettings/Notification/NotifiedListing)
-    olx-fetcher/              — парсер OLX GraphQL API + fix-parser.ts (повреждения/коробка/% АКБ)
-    liquidity-calculator/     — калькулятор ликвидности устройств
-      release-year-hints.ts   — getReleaseYear(model_key) — статическая таблица keyword -> год выпуска
-  db/
-    client.ts                 — Prisma client singleton (с driver adapter, global-cache в dev)
-  instrumentation.ts           — Next.js hook, авто-запуск скана при старте сервера + rescheduleAutoScan(settings.auto_scan_interval_minutes)
+  app/                          — Next.js App Router (тонкие page.tsx → import из @/pages/*)
+    api/                        — REST route handlers → @/server/*
+    layout.tsx, globals.scss
+  views/                        — FSD Pages (папка views, алиас @/pages/* — без конфликта с Next.js)
+    home/, device-detail/, favorites/, settings/
+    notifications/, notification-settings/
+    admin-users/, admin-scan-log/, login/, pending/
+  widgets/                      — крупные UI-блоки
+    header/                     — HeaderActions
+    admin-shell/                — AdminShell + навигация админки
+  features/                     — пользовательские сценарии
+    device-filter/              — FilterBar, filters-store, sort-and-filter
+    feed-scroll/                — scroll-store (позиция ленты)
+    scan-control/               — ScanBanner, useDevicesFeed
+    notifications/              — NotificationBell, useUnreadNotificationsCount
+    preferences/                — ThemeSwitcher, LanguageSwitcher, PreferencesMenu
+    auth/                       — UserMenu
+  entities/                     — бизнес-сущности
+    device/                     — DeviceCard, DamageTag, PhotoGallery, scoring lib
+  shared/                       — переиспользуемое без доменного контекста
+    ui/                         — CheckboxGroup, RangeSlider, Pagination, StatBar
+    api/                        — client.ts (fetch к /api/*, re-export типов)
+    types/                      — domain.ts, api-contracts.ts — единый источник типов
+    lib/                        — theme, listing-flags, part-utils, model-line-sort-key
+    providers/                  — AuthProvider, MuiProvider, ThemeInit
+    config/i18n/                — config, request, locales/{ru,en,pl}
+    db/                         — Prisma singleton
+  server/                       — backend (Node.js only, не импортировать в client)
+    auth/                       — auth-options, auth-guards
+    repositories/               — Prisma-доступ (devices, scan-issues, user-*)
+    fetchers/                   — внешние источники (OLX, Allegro, Ceneo, parts-store…)
+    scan/                       — pipeline, scan-manager, parts-chain, concurrency
+    domain/                     — бизнес-логика (profitability, brand, liquidity…)
+    shared/                     — config, cache, logger, concurrency-limiter
+    types.ts                    — re-export из @/shared/types
+  i18n/                         — stubs для next-intl plugin (re-export из shared/config/i18n)
+```
+
+### Правила импортов (слои сверху вниз)
+
+`app` → `pages` (views) → `widgets` → `features` → `entities` → `shared`
+
+- **Запрещено**: `shared` → `features`, `entities` → `pages`, client → `server`
+- **Public API**: импортировать через `index.ts` слайса (`@/entities/device`, `@/features/device-filter`)
+- **Исключение**: `getModelLineSortKey` в `@/shared/lib/model-line-sort-key` (чистая функция, без server deps)
+- **ESLint**: `npm run lint` — `eslint-plugin-boundaries` v7, правило `boundaries/dependencies` (см. `eslint.config.mjs`)
+
+### tsconfig aliases
+
+`@/shared/*`, `@/entities/*`, `@/features/*`, `@/widgets/*`, `@/pages/*` → `src/views/*`, `@/server/*`, `@/*`
+
+> **Важно:** папка на диске — `src/views/`, не `src/pages/`. Имя `pages` зарезервировано Next.js для Pages Router.
+
+### Старые пути (удалены)
+
+`components/`, `hooks/`, `store/`, `lib/`, `db/`, `types/` — мигрированы в FSD-слои (скрипт `scripts/fsd-migrate.mjs`).
+
+## Структура server/ (backend)
+
+```
+src/server/
+  auth/
+    auth-options.ts           — NextAuth конфиг
+    auth-guards.ts            — requireAuth, requireAdmin
+  repositories/
+    devices-repository.ts     — Device, ScanRun, Part, AppSettings, ModelCache, PartsCostCache, Notification*
+    scan-issues-repository.ts — ScanIssueCollector, лог битых объявлений
+    user-listings-repository.ts
+    user-display-settings-repository.ts
+  fetchers/
+    allegro-api-client.ts, allegro-parts-fetcher.ts
+    ceneo-fetcher.ts
+    olx-parts-fetcher.ts, olx-market-price-fetcher.ts
+    parts-store-fetcher.ts, parts-store-prefetch.ts
+    olx-fetcher/              — fetcher, fix-parser, parser, guards
+  scan/
+    pipeline.ts               — runFullPipeline (оркестратор скана)
+    parts-chain.ts            — цепочка Allegro → OLX → parts-store → Ceneo → stub + L1/L2 кэш
+    run-with-concurrency.ts   — runWithConcurrency, withTimeout
+    scan-manager.ts           — triggerScan, getScanStatus, isScanningEffective
+    scan-scheduler.ts         — node-cron авто-рескан
+    scan-issue-detector.ts    — classifyListingError, detectDeviceWarnings
+  domain/
+    brand-extractor.ts, model-normalizer.ts, model-key-clusterer.ts, model-line-extractor.ts
+    profitability.ts, junk-filter.ts, parts-shared.ts, repair-parts-stubs.ts, static-parts-prices.ts
+    notifier.ts               — checkAndNotify (Telegram + in-app)
+    liquidity-calculator/     — calculator, kimovil-fetcher, release-year-hints, constants
+  shared/
+    config.ts                 — env-настройки (pipeline, telegram, cache TTL)
+    cache.ts                  — L1 in-memory (ifixit, allegro)
+    logger.ts, concurrency-limiter.ts
+  types.ts                    — re-export @/shared/types (тонкая обёртка для server-импортов)
+```
+
+### Единый источник типов
+
+- `src/shared/types/domain.ts` — `AnalyzedDevice`, `AllegroPart`, `ScanStage`, `DevicesFilterMeta`
+- `src/shared/types/api-contracts.ts` — `DevicesListResponse`, `ScanStatusResponse`, API settings
+- `src/shared/api/client.ts` — только fetch-функции + re-export типов
+- `src/server/types.ts` — re-export для backend-модулей
+
+### Паттерн parts-chain (pipeline)
+
+`parts-chain.ts#fetchPartsData` — единая точка поиска запчастей:
+1. L1 кэш (node-cache) → L2 БД (`PartsCostCache`)
+2. Allegro → OLX parts → parts-store.pl → Ceneo → static stub
+3. Медианный фильтр выбросов (`parts-shared.ts`)
+
+### Паттерн concurrency
+
+`run-with-concurrency.ts` — пул воркеров со скользящим окном (не фиксированные батчи).
+`concurrency-limiter.ts` — per-source лимитеры (OLX, Ceneo, parts-store, iFixit).
+
 prisma/
-  schema.prisma                — ScanRun, Device, Part, AppSettings, ModelCache, PartsCostCache, NotificationSettings, Notification, NotifiedListing
+  schema.prisma
   migrations/
-prisma.config.ts               — конфиг Prisma CLI (dotenv + driver adapter url)
+prisma.config.ts
+src/instrumentation.ts        — авто-скан при старте + rescheduleAutoScan
+src/shared/db/client.ts       — Prisma singleton (driver adapter)
 ```
 
 ## Паттерны
 
 ### Создание компонента
 ```tsx
-// components/ComponentName/ComponentName.tsx
-import styles from "./ComponentName.module.scss";
-import { useTranslations } from "@/lib/intl/useTranslations";
+// entities/device/ui/device-card/DeviceCard.tsx (или features/*/ui)
+import styles from "./DeviceCard.module.scss";
+import { useTranslations } from "next-intl";
 
 export function ComponentName({ prop }: Props) {
   const { t } = useTranslations("namespace_key");
@@ -312,8 +368,9 @@ L2-кэш (`ModelCache`/`PartsCostCache` в БД, переживает рест�
 4. `fetchPartsData` на каждый `damage_type` (см. `fetchPartsForDamageType`):
    a. Allegro (`allegro-parts-fetcher.ts`) — API → HTML → Scrapfly.
    b. OLX "Części do telefonów" (`olx-parts-fetcher.ts`) — с медианным фильтром цен.
-   c. Ceneo.pl (третья попытка — чаще анти-бот заглушка).
-   d. Fallback: статические оценки из `static-parts-prices.ts` (помечены ★ в заголовке).
+   c. parts-store.pl (`parts-store-fetcher.ts`) — GraphQL `productsTextSearch` на `/graphql/v1/` (без auth; лимитер 2 req / 450ms).
+   d. Ceneo.pl (четвёртая попытка — чаще анти-бот заглушка).
+   e. Fallback: статические оценки из `static-parts-prices.ts` (помечены ★ в заголовке).
 5. **Фаза 2** — `finalizeDevices(raw_listings)`: `clusterModelKeys` → медиана цены по `model_key` в текущем скане → `prefetchOlxMarketPrices()` для моделей без медианы (OLX GraphQL `query`, сохранение в `ModelCache.avg_market_price`) → `market_sell_price`/`market_sell_price_source` → `calculateProfitability` (медиана запчастей по типу повреждения) → `getLiquidityScore`.
 6. Стадия `saving`: `saveDevices` — сохраняет весь результат скана в Prisma (транзакция, полная замена таблицы `Device`)
 

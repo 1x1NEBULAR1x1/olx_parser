@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApprovedUser } from "@/server/auth-guards";
+import { requireApprovedUser } from "@/server/auth/auth-guards";
 import {
   addFavorite,
   getUserListingIds,
   hideDevice,
   removeFavorite,
   unhideDevice,
-} from "@/server/user-listings-repository";
+} from "@/server/repositories/user-listings-repository";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

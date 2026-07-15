@@ -1,0 +1,208 @@
+.photo_gallery {
+  position: relative;
+  width: 100%;
+  background: var(--color-surface-muted);
+
+  &_viewport {
+    overflow: hidden;
+    width: 100%;
+    touch-action: pan-y pinch-zoom;
+  }
+
+  &_track {
+    display: flex;
+    width: 100%;
+    transform: translate3d(0, 0, 0);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+
+  &_slide {
+    flex: 0 0 100%;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
+    background: var(--color-surface-muted);
+  }
+
+  &_nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    background: rgba(10, 10, 10, 0.68);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    transition: opacity 0.2s ease, background 0.15s ease, transform 0.15s ease;
+    padding: 0;
+
+    &:hover:not(:disabled) {
+      background: rgba(10, 10, 10, 0.88);
+      transform: translateY(-50%) scale(1.05);
+    }
+
+    &_prev {
+      left: 8px;
+    }
+
+    &_next {
+      right: 8px;
+    }
+
+    &_disabled {
+      opacity: 0 !important;
+      pointer-events: none;
+    }
+  }
+
+  &:hover &_nav:not(&_nav_disabled),
+  &:focus-within &_nav:not(&_nav_disabled) {
+    opacity: 1;
+  }
+
+  &_detail &_nav:not(&_nav_disabled) {
+    opacity: 0.72;
+  }
+
+  &_counter {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    background: rgba(10, 10, 10, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--radius-sm);
+    padding: 3px 8px;
+    backdrop-filter: blur(8px);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  &_dots {
+    position: absolute;
+    left: 50%;
+    bottom: 10px;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(10, 10, 10, 0.55);
+    backdrop-filter: blur(8px);
+    z-index: 2;
+  }
+
+  &_dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    border: none;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+    transition: transform 0.15s, background 0.15s;
+
+    &_active {
+      background: var(--color-primary);
+      transform: scale(1.2);
+    }
+  }
+
+  &_thumbs {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    @media (max-width: 639px) {
+      padding: 8px;
+      gap: 6px;
+    }
+  }
+
+  &_thumb {
+    flex: 0 0 auto;
+    width: 64px;
+    height: 48px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid transparent;
+    padding: 0;
+    cursor: pointer;
+    background: none;
+    transition: border-color 0.15s;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      pointer-events: none;
+    }
+
+    &_active {
+      border-color: var(--color-primary);
+    }
+  }
+
+  &_detail {
+    .photo_gallery_slide {
+      padding: 16px;
+
+      @media (max-width: 639px) {
+        padding: 4px;
+      }
+    }
+
+    .photo_gallery_nav {
+      width: 36px;
+      height: 36px;
+    }
+  }
+
+  &_card {
+    .photo_gallery_slide {
+      padding: 12px;
+    }
+  }
+
+  @media (max-width: 639px) {
+    &_nav {
+      width: 28px;
+      height: 28px;
+      opacity: 0.85;
+    }
+
+    &:hover &_nav:not(&_nav_disabled) {
+      opacity: 0.85;
+    }
+  }
+}

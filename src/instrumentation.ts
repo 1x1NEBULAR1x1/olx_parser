@@ -1,8 +1,8 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { reconcileStaleScanRuns, getAppSettings } = await import("@/server/devices-repository");
-    const { triggerScan } = await import("@/server/scan-manager");
-    const { rescheduleAutoScan } = await import("@/server/scan-scheduler");
+    const { reconcileStaleScanRuns, getAppSettings } = await import("@/server/repositories/devices-repository");
+    const { triggerScan } = await import("@/server/scan/scan-manager");
+    const { rescheduleAutoScan } = await import("@/server/scan/scan-scheduler");
     // Чистим "зависшие" ScanRun от предыдущего процесса до первого triggerScan(),
     // иначе isScanRunningInDb() навсегда решит, что скан ещё идёт.
     await reconcileStaleScanRuns();
