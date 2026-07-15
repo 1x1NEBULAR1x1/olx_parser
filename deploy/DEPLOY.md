@@ -122,7 +122,7 @@ sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
 sudo mkswap /swapfile && sudo swapon /swapfile
 
 rm -rf node_modules .next
-npm ci
+npm ci --include=dev
 npm rebuild better-sqlite3 --build-from-source
 
 ./deploy/diagnose-native.sh
@@ -132,6 +132,32 @@ npm run build
 
 sudo systemctl restart smartflip
 ```
+
+### Ошибка `Cannot find module './tailwindcss-oxide.linux-x64-gnu.node'`
+
+Tailwind 4 требует платформенный пакет `@tailwindcss/oxide-linux-x64-gnu` (devDependency).
+
+Частые причины:
+
+1. **`NODE_ENV=production` при `npm ci`** — devDependencies не ставятся. Решение:
+   ```bash
+   cd /var/www/smartflip
+   rm -rf node_modules .next
+   npm ci --include=dev
+   npm run build
+   ```
+2. **`node_modules` скопированы с Mac** — переустановка на сервере:
+   ```bash
+   rm -rf node_modules
+   npm ci --include=dev
+   ```
+3. Проверка:
+   ```bash
+   ls node_modules/@tailwindcss/oxide-linux-x64-gnu/tailwindcss-oxide.linux-x64-gnu.node
+   node -e "require('@tailwindcss/oxide'); console.log('OK')"
+   ```
+
+Предпочтительно: `./deploy/build.sh` — скрипт сам ставит `--include=dev` и проверяет oxide.
 
 **Важно:** не вызывайте `node -e "require('@next/swc-linux-x64-gnu')"` — на проблемных VPS это
 даёт Bus error. Диагностика: `./deploy/diagnose-native.sh` (безопасная, без native .node).

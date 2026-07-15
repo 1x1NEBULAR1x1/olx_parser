@@ -28,6 +28,9 @@ check_path() {
 }
 
 check_path "better-sqlite3 .node" "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+check_path "tailwind oxide gnu" "node_modules/@tailwindcss/oxide-linux-x64-gnu/tailwindcss-oxide.linux-x64-gnu.node"
+check_path "tailwind oxide musl" "node_modules/@tailwindcss/oxide-linux-x64-musl/tailwindcss-oxide.linux-x64-musl.node"
+check_path "НЕТ oxide-darwin (хорошо на Linux)" "node_modules/@tailwindcss/oxide-darwin-arm64"
 
 echo ""
 echo "=== Проверки загрузки ==="
@@ -45,6 +48,7 @@ safe_check() {
 }
 
 safe_check "better-sqlite3" "require('better-sqlite3')"
+safe_check "@tailwindcss/oxide" "require('@tailwindcss/oxide')"
 
 echo ""
 echo "=== Рекомендации ==="
@@ -62,6 +66,12 @@ fi
 if [[ ! -f node_modules/better-sqlite3/build/Release/better_sqlite3.node ]]; then
   echo "  • better-sqlite3 не собран: npm rebuild better-sqlite3 --build-from-source"
   echo "    Нужны: sudo apt install -y build-essential python3"
+fi
+
+if [[ ! -f node_modules/@tailwindcss/oxide-linux-x64-gnu/tailwindcss-oxide.linux-x64-gnu.node ]] \
+  && [[ ! -f node_modules/@tailwindcss/oxide-linux-x64-musl/tailwindcss-oxide.linux-x64-musl.node ]]; then
+  echo "  • @tailwindcss/oxide для Linux не установлен"
+  echo "    rm -rf node_modules && npm ci --include=dev"
 fi
 
 echo "  • Сборка: npm run build  (или ./deploy/build.sh)"

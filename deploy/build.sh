@@ -52,16 +52,46 @@ warn_low_memory
 echo "==> Проверка уязвимостей (уровень high+)..."
 npm run audit:check
 
-echo "==> Установка зависимостей (npm ci)..."
+echo "==> Установка зависимостей (npm ci, включая dev — нужны для next build)..."
 if [[ -d node_modules ]] && ! node -e "require('better-sqlite3')" 2>/dev/null; then
   echo "    Чужие/битые бинарники — полная переустановка node_modules..."
   rm -rf node_modules
 fi
-npm ci
+# NODE_ENV=production заставляет npm ci пропустить devDependencies (tailwind/postcss).
+# На сервере переменная часто уже export из systemd/.profile — явно включаем dev.
+if [[ -d node_modules/@tailwindcss/oxide-darwin-arm64 || -d node_modules/@tailwindcss/oxide-darwin-x64 ]] \
+  && [[ ! -f node_modules/@tailwindcss/oxide-linux-x64-gnu/tailwindcss-oxide.linux-x64-gnu.node ]] \
+  && [[ ! -f node_modules/@tailwindcss/oxide-linux-x64-musl/tailwindcss-oxide.linux-x64-musl.node ]]; then
+  echo "    node_modules собраны под macOS — переустановка под Linux..."
+  rm -rf node_modules
+fi
+npm ci --include=dev
 
 echo "==> Сборка better-sqlite3..."
 npm rebuild better-sqlite3 --build-from-source
 verify_better_sqlite3
+
+verify_tailwind_oxide() {
+  node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const candidates = [
+      '@tailwindcss/oxide-linux-x64-gnu/tailwindcss-oxide.linux-x64-gnu.node',
+      '@tailwindcss/oxide-linux-x64-musl/tailwindcss-oxide.linux-x64-musl.node',
+    ];
+    const found = candidates.some((rel) => fs.existsSync(path.join('node_modules', rel)));
+    if (!found) {
+      console.error('ERROR: нет нативного @tailwindcss/oxide для Linux.');
+      console.error('  rm -rf node_modules && npm ci --include=dev');
+      process.exit(1);
+    }
+    require('@tailwindcss/oxide');
+    console.log('@tailwindcss/oxide OK');
+  "
+}
+
+echo "==> Проверка Tailwind oxide (linux native)..."
+verify_tailwind_oxide
 
 echo "==> Миграции БД..."
 npm run prisma:migrate:deploy
