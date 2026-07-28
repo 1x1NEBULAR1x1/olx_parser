@@ -59,7 +59,7 @@ npm audit             # полный отчёт
 
 ## Два сайта на одном VPS (SmartFlip + relpen.org)
 
-Если `v677071.hosted-by-vdsina.com` редиректит на relpen — см. **`deploy/nginx/MULTI-SITE.md`**.
+Если `v915607.hosted-by-vdsina.com` редиректит на relpen или HTTPS даёт `ERR_SSL_UNRECOGNIZED_NAME_ALERT` — см. **`deploy/nginx/MULTI-SITE.md`** и `deploy/nginx/fix-ssl-vdsina.sh`.
 Кратко: в `smartflip.conf` должен быть правильный `server_name`, upstream `127.0.0.1:8080`,
 у relpen убрать `default_server`, в `.env` указать `NEXTAUTH_URL` на VDSina-домен.
 

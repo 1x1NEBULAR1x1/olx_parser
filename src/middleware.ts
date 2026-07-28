@@ -12,6 +12,23 @@ function jsonError(status: number, message: string): NextResponse {
   return NextResponse.json({ error: message }, { status });
 }
 
+/** Редирект с учётом X-Forwarded-* за nginx (req.url = localhost:8080). */
+function redirectTo(req: NextRequest, pathname: string): NextResponse {
+  const url = req.nextUrl.clone();
+  url.pathname = pathname;
+
+  const forwarded_host = req.headers.get("x-forwarded-host");
+  const forwarded_proto = req.headers.get("x-forwarded-proto");
+  if (forwarded_host) {
+    url.host = forwarded_host.split(",")[0]?.trim() ?? url.host;
+  }
+  if (forwarded_proto) {
+    url.protocol = forwarded_proto.endsWith(":") ? forwarded_proto : `${forwarded_proto}:`;
+  }
+
+  return NextResponse.redirect(url);
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -30,23 +47,23 @@ export async function middleware(req: NextRequest) {
   if (!token) {
     return is_api
       ? jsonError(401, "Unauthorized")
-      : NextResponse.redirect(new URL("/login", req.url));
+      : redirectTo(req, "/login");
   }
 
   if (!token.is_approved && !pathname.startsWith("/pending")) {
     return is_api
       ? jsonError(403, "Access not approved")
-      : NextResponse.redirect(new URL("/pending", req.url));
+      : redirectTo(req, "/pending");
   }
 
   if (pathname.startsWith("/admin") && token.role !== "admin") {
     return is_api
       ? jsonError(403, "Admin only")
-      : NextResponse.redirect(new URL("/", req.url));
+      : redirectTo(req, "/");
   }
 
   if (pathname.startsWith("/login") && token.is_approved) {
-    return NextResponse.redirect(new URL("/", req.url));
+    return redirectTo(req, "/");
   }
 
   return NextResponse.next();
