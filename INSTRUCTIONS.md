@@ -534,3 +534,19 @@ Production:
 npm run build
 npm run start
 ```
+
+### Mac: три функции в консоли (`scripts/mac.sh`)
+
+Скрипт для локальной машины (не `deploy/build.sh` — тот только Linux-сервер).
+
+**С рабочего стола:** двойной клик по `SmartFlip.command` → Terminal с меню:
+
+1. Проверка обновлений  
+2. Пересборка  
+3. Запуск — сайт на http://127.0.0.1:8080 и вкладка в браузере. Google-вход работает только с localhost (так прописано в Google OAuth). Control+C выключает сайт.  
+
+Первый раз macOS может спросить разрешение (ПКМ → Открыть). То же меню: `./scripts/mac.sh` или `scripts/mac-console.command`.
+
+- SSH берётся из `~/.ssh/config` (`Host github.com` → `~/.ssh/id_rsa_github`). Другой ключ: `OLX_SSH_KEY=/path/to/key`.
+- Если папка скачана zip'ом (нет `.git`) — `olx_check` делает `git init` и вешает `origin`.
+- Приватные ключи в корне (`1` / `1.pub`) в git не класть.

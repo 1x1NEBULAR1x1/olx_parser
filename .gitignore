@@ -18,3 +18,7 @@ credentials.json
 test-results/
 playwright-report/
 data/
+.olx-mac.pid
+.olx-mac.log
+/1
+/1.pub

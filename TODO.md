@@ -218,3 +218,12 @@
 - Watchdog/TTL для "зависших" `ScanRun` — **реализовано (волна 1)**, см. `ScanCoordinator` + `expireStaleScanRuns`
 - Мультипользовательские Telegram-подписки (сейчас один общий чат из `.env`, см. "Уведомления о хороших позициях" выше)
 - Лидер-election или внешний scheduler вместо `node-cron` внутри процесса — для горизонтального масштабирования авто-скана на несколько инстансов
+
+## Mac / локальный запуск
+
+- [x] Скрипт `scripts/mac.sh` — функции `olx_check` / `olx_build` / `olx_run` (см. INSTRUCTIONS.md).
+- [x] Ярлык с рабочего стола: `~/Desktop/SmartFlip.command` открывает Terminal с этими функциями.
+- [x] Пункт «Запуск» открывает вкладку браузера на localhost:8080. ngrok убран: Google OAuth не совпадёт с одноразовым ngrok-доменом.
+- [ ] Папка `olx_parser-main` изначально без `.git` (zip). Первый `olx_check` делает `git init` + origin; чтобы совпасть с GitHub — `olx_check pull` (при конфликтах локальных файлов — `olx_check pull --force`).
+- [ ] В корне лежат ключи `1` / `1.pub` (passphrase, не дефолтный github-ключ). Не коммитить (уже в `.gitignore`). Лучше перенести в `~/.ssh` и удалить из проекта. Рабочий ключ GitHub — `~/.ssh/id_rsa_github`.
+- [x] **EACCES prisma generate** — `node_modules` был root после `sudo pnpm install`. Починено: `chown -R macbookair:staff node_modules`. Не ставить зависимости через sudo.
