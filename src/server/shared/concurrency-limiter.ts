@@ -11,24 +11,28 @@
 export function createConcurrencyLimiter(max_concurrent: number, min_interval_ms = 0) {
   let active = 0;
   let last_start = 0;
+  let wake_timer: ReturnType<typeof setTimeout> | null = null;
   const queue: Array<() => void> = [];
 
+  function scheduleWake(wait_ms: number): void {
+    if (wake_timer) return;
+    wake_timer = setTimeout(() => {
+      wake_timer = null;
+      tryRun();
+    }, wait_ms);
+  }
+
   function tryRun(): void {
-    if (active >= max_concurrent || queue.length === 0) return;
+    while (active < max_concurrent && queue.length > 0) {
+      const wait = Math.max(0, last_start + min_interval_ms - Date.now());
+      if (wait > 0) {
+        scheduleWake(wait);
+        return;
+      }
 
-    const now = Date.now();
-    const wait = Math.max(0, last_start + min_interval_ms - now);
-    const next = queue.shift();
-    if (!next) return;
-
-    if (wait > 0) {
-      setTimeout(() => {
-        last_start = Date.now();
-        active += 1;
-        next();
-      }, wait);
-    } else {
-      last_start = now;
+      const next = queue.shift();
+      if (!next) return;
+      last_start = Date.now();
       active += 1;
       next();
     }
@@ -49,13 +53,25 @@ export function createConcurrencyLimiter(max_concurrent: number, min_interval_ms
   };
 }
 
+function mergeAbortSignals(timeout_ms: number, existing?: AbortSignal | null): AbortSignal {
+  const timeout_signal = AbortSignal.timeout(timeout_ms);
+  if (!existing) return timeout_signal;
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any([existing, timeout_signal]);
+  }
+  return timeout_signal;
+}
+
 /** fetch() с жёстким таймаутом — защищает пайплайн от подвисания на анти-бот
  * страницах/медленных ответах внешнего источника (без этого один "плохой"
  * запрос мог держать всю очередь конкурентности занятой неопределённо долго). */
 export async function fetchWithTimeout(
   url: string,
-  init: RequestInit,
+  init: RequestInit = {},
   timeout_ms = 8000,
 ): Promise<Response> {
-  return fetch(url, { ...init, signal: AbortSignal.timeout(timeout_ms) });
+  return fetch(url, {
+    ...init,
+    signal: mergeAbortSignals(timeout_ms, init.signal),
+  });
 }

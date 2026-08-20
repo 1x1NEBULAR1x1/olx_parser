@@ -11,6 +11,8 @@
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header Connection "";
         access_log off;
     }
 
@@ -23,6 +25,7 @@
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header Connection "";
         proxy_connect_timeout 60s;
         proxy_read_timeout 120s;
     }
@@ -36,6 +39,7 @@
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header Connection "";
         proxy_connect_timeout 60s;
         proxy_read_timeout 600s;
         proxy_send_timeout 600s;
@@ -63,6 +67,11 @@
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header Connection "";
+        proxy_redirect http://127.0.0.1:8080/ $scheme://$host/;
+        proxy_redirect http://localhost:8080/ $scheme://$host/;
+        proxy_redirect https://127.0.0.1:8080/ $scheme://$host/;
+        proxy_redirect https://localhost:8080/ $scheme://$host/;
         proxy_connect_timeout 60s;
         proxy_read_timeout 120s;
         proxy_send_timeout 120s;

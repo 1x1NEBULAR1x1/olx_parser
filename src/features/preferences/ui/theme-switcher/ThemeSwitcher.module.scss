@@ -1,39 +1,42 @@
 .switcher {
   display: flex;
   align-items: center;
+  height: 36px;
   gap: 2px;
-  background: var(--color-surface-hover);
+  padding: 2px;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  padding: 2px;
   flex-shrink: 0;
+  transition: border-color 0.15s;
+
+  &:hover {
+    border-color: var(--color-primary-border-strong);
+  }
 
   &_btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    min-height: 28px;
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
     border: none;
     background: transparent;
     border-radius: 6px;
     font-size: 13px;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: color 0.15s, background 0.15s;
     color: var(--color-text-muted);
-    opacity: 0.55;
     gap: 6px;
 
     &:hover {
-      color: var(--color-text);
-      opacity: 0.85;
+      color: var(--color-primary-text);
     }
 
     &_active {
-      background: var(--color-surface);
-      color: var(--color-primary);
-      opacity: 1;
-      box-shadow: 0 1px 2px var(--color-shadow);
+      background: var(--color-primary-bg);
+      color: var(--color-primary-text);
     }
   }
 
@@ -44,18 +47,23 @@
   }
 
   &_stacked {
+    height: auto;
     flex-direction: column;
     align-items: stretch;
     width: 100%;
     gap: 4px;
     padding: 4px;
 
+    &:hover {
+      border-color: var(--color-border);
+    }
+
     .switcher_btn {
       width: 100%;
       min-height: 36px;
+      height: auto;
       justify-content: flex-start;
       padding: 0 10px;
-      opacity: 1;
       color: var(--color-text-secondary);
 
       &:hover {
@@ -64,8 +72,8 @@
       }
 
       &_active {
-        color: var(--color-primary);
-        background: var(--color-surface);
+        color: var(--color-primary-text);
+        background: var(--color-primary-bg);
       }
     }
   }

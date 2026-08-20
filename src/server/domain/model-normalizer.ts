@@ -44,9 +44,10 @@ const SERIES_PATTERNS: SeriesPattern[] = [
   { brand: "samsung", regex: /(?:galaxy\s*)?\b(note\s*\d{1,2}\s*(?:ultra)?)\b/i, canonical_prefix: "galaxy" },
   { brand: "samsung", regex: /(?:galaxy\s*)?\b(z\s*(?:fold|flip)\s*\d{0,2})\b/i, canonical_prefix: "galaxy" },
   { brand: "samsung", regex: /(?:galaxy\s*)?\b(m\d{1,2})\b/i, canonical_prefix: "galaxy" },
-  { brand: "xiaomi", regex: /(?:xiaomi\s*)?(mi\s*\d{1,2}[a-z]?)/i },
   { brand: "xiaomi", regex: /xiaomi\s*(\d{1,2}\s*(?:pro|ultra|t)?)/i },
-  { brand: "redmi", regex: /redmi\s*(note\s*\d{1,2}\s*(?:pro|s)?|\d{1,2}[a-z]?)/i },
+  // \b перед mi — иначе «redmi 13» захватывается как «mi 13».
+  { brand: "xiaomi", regex: /(?:xiaomi\s+)?\bmi\s*(\d{1,2}[a-z]?(?:\s*(?:pro|ultra|t))?)/i, canonical_prefix: "mi" },
+  { brand: "redmi", regex: /redmi\s*(note\s*\d{1,2}\s*(?:pro\s*plus|pro\+|pro)?(?:\s*5g)?|\d{1,2}[a-z]?)/i },
   { brand: "poco", regex: /poco\s*([xmf]\d{1,2}\s*(?:pro|gt)?)/i },
   { brand: "google", regex: /pixel\s*(\d{1,2}[a]?\s*(?:pro|xl)?)/i },
   { brand: "oneplus", regex: /(?:oneplus|one\s*plus)\s*(\d{1,2}[a-z]?\s*(?:pro|t)?)/i },

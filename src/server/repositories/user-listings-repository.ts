@@ -63,6 +63,14 @@ export interface AdminUserRow {
   hidden_count: number;
 }
 
+export async function listApprovedUserIds(): Promise<string[]> {
+  const users = await prisma.user.findMany({
+    where: { is_approved: true },
+    select: { id: true },
+  });
+  return users.map((user) => user.id);
+}
+
 export async function listUsersForAdmin(): Promise<AdminUserRow[]> {
   const users = await prisma.user.findMany({
     orderBy: { createdAt: "desc" },

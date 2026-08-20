@@ -1,13 +1,30 @@
 import { runFullPipeline, type PipelineProgress } from "./pipeline";
 import {
   createScanRun, finishScanRun, getLastScanRun, saveDevices, updateScanProgress,
+  expireStaleScanRuns,
 } from "@/server/repositories/devices-repository";
-import { saveScanIssues, ScanIssueCollector } from "@/server/repositories/scan-issues-repository";
+import { savePriceHistoryFromScan } from "@/server/repositories/price-history-repository";
+import {
+  isScanLockActive,
+  releaseScanLock,
+  tryAcquireScanLock,
+} from "@/server/repositories/scan-coordinator-repository";
+import {
+  ensureExpectedScanWarningsPruned,
+  saveScanIssues,
+  ScanIssueCollector,
+} from "@/server/repositories/scan-issues-repository";
+import { syncCatalogFromLatestDevices } from "@/server/repositories/catalog-repository";
 import { checkAndNotify } from "@/server/domain/notifier";
 import {
   createLogger, StageTimer, estimateEtaMs, formatDuration,
 } from "@/server/shared/logger";
+import { getScanDashboardStats } from "./scan-dashboard-stats";
+import { calculateScanPercent } from "./scan-progress";
 import { config } from "@/server/shared/config";
+import { deriveUiOutcome, shouldReplaceFeed, type ScanOutcomeStatus } from "./scan-outcome";
+import { publishScanUpdate, subscribeScanUpdate } from "@/server/shared/live-hub";
+import { waitUntil } from "@/server/shared/long-poll";
 
 const scan_log = createLogger("scan");
 
@@ -35,7 +52,12 @@ function createThrottledProgressWriter(
     const progress = pending;
     pending = null;
     last_write_at = Date.now();
-    void updateScanProgress(scan_id, progress);
+    void updateScanProgress(
+      scan_id,
+      progress.stage === "fetching_listings"
+        ? { stage: "fetching_listings" }
+        : progress,
+    );
   }
 
   function maybeLogProgress(progress: PipelineProgress) {
@@ -60,6 +82,7 @@ function createThrottledProgressWriter(
   }
 
   return (progress: PipelineProgress) => {
+    rememberLiveProgress(scan_id, progress);
     pending = progress;
     const is_incremental_stage = progress.stage === "analyzing" || progress.stage === "finalizing";
     const stage_changed = !is_incremental_stage || progress.processed_listings === 0;
@@ -100,13 +123,15 @@ function createSavingProgressWriter(
     const should_write = processed === 0
       || processed === total
       || now - last_write_at >= PROGRESS_WRITE_MIN_INTERVAL_MS;
+    const saving_progress = {
+      stage: "saving" as const,
+      total_listings: total,
+      processed_listings: processed,
+    };
+    rememberLiveProgress(scan_id, saving_progress);
     if (should_write) {
       last_write_at = now;
-      void updateScanProgress(scan_id, {
-        stage: "saving",
-        total_listings: total,
-        processed_listings: processed,
-      });
+      void updateScanProgress(scan_id, saving_progress);
     }
 
     const should_log = processed === 0
@@ -132,8 +157,68 @@ function createSavingProgressWriter(
 // источником истины для внешнего мира является БД (ScanRun.status === "running"),
 // а in-memory флаг используется как дополнительная защита от параллельного
 // запуска внутри одного и того же инстанса модуля.
+interface LiveScanProgress {
+  scan_id: string;
+  stage: string | null;
+  total_listings: number | null;
+  processed_listings: number;
+  stage_started_at: number;
+  last_tick_at: number;
+}
+
 let is_scanning = false;
 let last_scan_triggered_at = 0;
+let live_progress: LiveScanProgress | null = null;
+let last_dashboard: Awaited<ReturnType<typeof getScanDashboardStats>> | null = null;
+let last_dashboard_at = 0;
+const DASHBOARD_REFRESH_MS = 8_000;
+let scan_publish_timer: ReturnType<typeof setTimeout> | null = null;
+let last_scan_publish_at = 0;
+const SCAN_PUBLISH_MIN_INTERVAL_MS = 1_000;
+
+function notifyScanWaiters(immediate = false): void {
+  if (immediate) {
+    if (scan_publish_timer) {
+      clearTimeout(scan_publish_timer);
+      scan_publish_timer = null;
+    }
+    last_scan_publish_at = Date.now();
+    publishScanUpdate();
+    return;
+  }
+
+  const elapsed = Date.now() - last_scan_publish_at;
+  if (elapsed >= SCAN_PUBLISH_MIN_INTERVAL_MS) {
+    last_scan_publish_at = Date.now();
+    publishScanUpdate();
+    return;
+  }
+
+  if (!scan_publish_timer) {
+    scan_publish_timer = setTimeout(() => {
+      scan_publish_timer = null;
+      last_scan_publish_at = Date.now();
+      publishScanUpdate();
+    }, SCAN_PUBLISH_MIN_INTERVAL_MS - elapsed);
+  }
+}
+
+function rememberLiveProgress(
+  scan_id: string,
+  progress: { stage: string; total_listings?: number; processed_listings?: number },
+): void {
+  const now = Date.now();
+  const stage_changed = live_progress?.scan_id !== scan_id || live_progress.stage !== progress.stage;
+  notifyScanWaiters(stage_changed);
+  live_progress = {
+    scan_id,
+    stage: progress.stage,
+    total_listings: progress.total_listings ?? live_progress?.total_listings ?? null,
+    processed_listings: progress.processed_listings ?? live_progress?.processed_listings ?? 0,
+    stage_started_at: stage_changed || !live_progress ? now : live_progress.stage_started_at,
+    last_tick_at: now,
+  };
+}
 
 export async function triggerScan(): Promise<void> {
   if (is_scanning) {
@@ -142,6 +227,10 @@ export async function triggerScan(): Promise<void> {
   }
   if (await isScanRunningInDb()) {
     scan_log.warn("Скан уже идёт (запись ScanRun в БД)");
+    return;
+  }
+  if (await isScanLockActive()) {
+    scan_log.warn("Скан уже идёт (ScanCoordinator lock)");
     return;
   }
 
@@ -158,7 +247,16 @@ export async function triggerScan(): Promise<void> {
 
   last_scan_triggered_at = Date.now();
   is_scanning = true;
+  notifyScanWaiters(true);
   const scan_id = await createScanRun();
+  rememberLiveProgress(scan_id, { stage: "fetching_listings", processed_listings: 0 });
+  if (!await tryAcquireScanLock(scan_id)) {
+    scan_log.warn("Не удалось захватить ScanCoordinator lock");
+    await finishScanRun(scan_id, 0, "failed", "Scan lock занят");
+    is_scanning = false;
+    notifyScanWaiters(true);
+    return;
+  }
   const log = scan_log.child(scan_id.slice(0, 8));
   const timer = new StageTimer();
   timer.start("total");
@@ -168,45 +266,157 @@ export async function triggerScan(): Promise<void> {
     timer.start("pipeline");
     const write_progress = createThrottledProgressWriter(scan_id, timer, log);
     const issue_collector = new ScanIssueCollector();
-    const devices = await runFullPipeline(write_progress, issue_collector);
+    const pipeline_result = await runFullPipeline(write_progress, issue_collector);
+    const devices = pipeline_result.devices;
+    let outcome = pipeline_result.outcome;
     const pipeline_timing = timer.end("pipeline");
     log.info("Пайплайн завершён", {
       devices: devices.length,
+      outcome: outcome.status,
+      source: outcome.source,
       duration: formatDuration(pipeline_timing.duration_ms),
     });
+
+    if (outcome.should_replace_feed && !shouldReplaceFeed(devices.length, outcome.stats.previous_count)) {
+      issue_collector.recordError({
+        kind: "feed_not_replaced",
+        message: "После анализа не осталось лотов — лента не затёрта",
+      });
+      outcome = {
+        ...outcome,
+        status: "failed",
+        source: "previous_snapshot",
+        should_replace_feed: false,
+        message: "После анализа не осталось лотов. Показана предыдущая лента.",
+      };
+    }
+
+    if (!outcome.should_replace_feed) {
+      await saveScanIssues(scan_id, issue_collector.getItems());
+      const { issues_count, warnings_count } = issue_collector.getCounts();
+      log.warn("Лента не заменена, оставляем предыдущий снимок", {
+        message: outcome.message,
+        issues_count,
+        warnings_count,
+      });
+      await finishScanRun(scan_id, 0, "failed", outcome.message ?? "Лента не обновлена");
+      try {
+        const { notifyScanHealth } = await import("@/server/domain/notifier");
+        await notifyScanHealth({
+          status: "failed",
+          message: outcome.message ?? "Скан не обновил ленту",
+          scan_id,
+        });
+      } catch (error) {
+        log.error("Ошибка уведомления о здоровье скана", {}, error);
+      }
+      return;
+    }
 
     timer.start("saving");
     log.info("Сохранение в БД", { devices: devices.length });
     const write_saving_progress = createSavingProgressWriter(scan_id, devices.length, timer, log);
     write_saving_progress(0);
     await saveDevices(scan_id, devices, (processed) => write_saving_progress(processed));
+    try {
+      const history_rows = await savePriceHistoryFromScan(scan_id, devices);
+      log.info("История цен сохранена", { rows: history_rows });
+    } catch (error) {
+      log.warn("История цен не сохранена, лента уже записана", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     const saving_timing = timer.end("saving");
     log.info("Сохранение завершено", {
       devices: devices.length,
       duration: formatDuration(saving_timing.duration_ms),
     });
 
-    await saveScanIssues(scan_id, issue_collector.getItems());
-    const { issues_count, warnings_count } = issue_collector.getCounts();
-    log.info("Журнал скана", { issues_count, warnings_count });
+    try {
+      await saveScanIssues(scan_id, issue_collector.getItems());
+      const { issues_count, warnings_count } = issue_collector.getCounts();
+      log.info("Журнал скана", { issues_count, warnings_count });
+    } catch (error) {
+      log.warn("Журнал скана не записан, лента уже сохранена", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
-    await finishScanRun(scan_id, devices.length, "completed");
+    await finishScanRun(
+      scan_id,
+      devices.length,
+      "completed",
+      outcome.status === "ok" ? undefined : (outcome.message ?? undefined),
+    );
     log.info("Скан успешно завершён", {
       devices: devices.length,
+      outcome: outcome.status,
       total_duration: formatDuration(timer.end("total").total_elapsed_ms),
     });
+
+    try {
+      const synced = await syncCatalogFromLatestDevices();
+      log.info("Каталог моделей синхронизирован", { models: synced });
+    } catch (error) {
+      log.warn("Не удалось синхронизировать каталог моделей", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     try {
       await checkAndNotify(devices);
     } catch (error) {
       log.error("Ошибка проверки уведомлений", {}, error);
     }
+
+    try {
+      const {
+        enqueueKimovilPrefetch,
+        enqueueMedianCacheWrites,
+        enqueueOlxMarketPrefetch,
+        enqueueL2CacheWrites,
+      } = await import("./scan-jobs");
+      enqueueL2CacheWrites(pipeline_result.ifixit_cache_writes, pipeline_result.parts_cache_writes);
+      enqueueMedianCacheWrites(pipeline_result.fresh_medians, pipeline_result.cache_ttl_hours);
+      enqueueOlxMarketPrefetch(pipeline_result.olx_market_prefetch, pipeline_result.cache_ttl_hours);
+      enqueueKimovilPrefetch(devices, pipeline_result.cache_ttl_hours);
+    } catch (error) {
+      log.warn("Не удалось поставить фоновые задачи после скана", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    if (outcome.status !== "ok") {
+      try {
+        const { notifyScanHealth } = await import("@/server/domain/notifier");
+        await notifyScanHealth({
+          status: outcome.status,
+          message: outcome.message ?? "Скан завершён с ограничениями",
+          scan_id,
+        });
+      } catch (error) {
+        log.error("Ошибка уведомления о здоровье скана", {}, error);
+      }
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log.error("Ошибка сканирования", { duration: formatDuration(timer.elapsedMs()) }, error);
     await finishScanRun(scan_id, 0, "failed", message);
+    try {
+      const { notifyScanHealth } = await import("@/server/domain/notifier");
+      await notifyScanHealth({
+        status: "failed",
+        message,
+        scan_id,
+      });
+    } catch (notify_error) {
+      log.error("Ошибка уведомления о сбое скана", {}, notify_error);
+    }
   } finally {
+    live_progress = null;
+    await releaseScanLock(scan_id);
     is_scanning = false;
+    notifyScanWaiters(true);
   }
 }
 
@@ -238,45 +448,18 @@ export async function isScanningEffective(): Promise<boolean> {
   return isScanRunningInDb();
 }
 
-// Веса стадий в итоговом % — подобраны под реальное wall-time (~100с на ~450
-// объявлений): анализ ~65%, финализация (медианы/рентабельность) ~14%,
-// сохранение в SQLite (последовательные INSERT) ~17%. Раньше analyzing занимал
-// 5-95%, из-за чего «95%» выглядело как «почти готово», хотя впереди ещё
-// минуты finalize + save.
-const STAGE_WEIGHTS = {
-  fetching_listings: { from: 0, to: 3 },
-  analyzing: { from: 3, to: 68 },
-  finalizing: { from: 68, to: 82 },
-  saving: { from: 82, to: 99 },
-} as const;
-
-function calculateScanPercent(scan_run: {
-  status: string;
-  stage: string | null;
-  total_listings: number | null;
-  processed_listings: number;
-}): number {
-  if (scan_run.status === "completed") return 100;
-  if (scan_run.status !== "running") return 0;
-
-  const stage = scan_run.stage as keyof typeof STAGE_WEIGHTS | null;
-  if (!stage || !(stage in STAGE_WEIGHTS)) return 0;
-
-  const { from, to } = STAGE_WEIGHTS[stage];
-  if (
-    (stage === "analyzing" || stage === "finalizing" || stage === "saving")
-    && scan_run.total_listings
-  ) {
-    const ratio = Math.min(1, scan_run.processed_listings / scan_run.total_listings);
-    return Math.round(from + ratio * (to - from));
-  }
-  return from;
+export interface GetScanStatusOptions {
+  light?: boolean;
 }
 
-export async function getScanStatus(): Promise<{
+export async function getScanStatus(options: GetScanStatusOptions = {}): Promise<{
   is_scanning: boolean;
   scan_started_at: string | null;
   last_scan_finished_at: string | null;
+  last_scan_status: string | null;
+  last_scan_error: string | null;
+  outcome_status: ScanOutcomeStatus;
+  kept_previous_feed: boolean;
   devices_count: number;
   stage: string | null;
   total_listings: number | null;
@@ -285,21 +468,124 @@ export async function getScanStatus(): Promise<{
   issues_count: number;
   warnings_count: number;
   last_scan_id: string | null;
+  dashboard: Awaited<ReturnType<typeof getScanDashboardStats>>;
+  cursor: string;
 }> {
+  if (!options.light) {
+    await expireStaleScanRuns(config.pipeline.scan_stale_timeout_minutes);
+    await ensureExpectedScanWarningsPruned();
+  }
+
   const last_scan_run = await getLastScanRun();
   const is_scanning_now = is_scanning || last_scan_run?.status === "running";
+  const finished_at = last_scan_run?.finished_at?.getTime() ?? 0;
+  const dashboard_stale = Date.now() - last_dashboard_at >= DASHBOARD_REFRESH_MS;
+  const dashboard_behind_finish = Boolean(finished_at && finished_at > last_dashboard_at);
 
-  return {
+  let dashboard = last_dashboard;
+  if (
+    !options.light
+    || !dashboard
+    || (is_scanning_now && dashboard_stale)
+    || dashboard_behind_finish
+  ) {
+    dashboard = await getScanDashboardStats();
+    last_dashboard = dashboard;
+    last_dashboard_at = Date.now();
+  }
+  const live = live_progress
+    && last_scan_run
+    && live_progress.scan_id === last_scan_run.id
+    ? live_progress
+    : null;
+  const stage = live?.stage ?? last_scan_run?.stage ?? null;
+  const total_listings = live?.total_listings ?? last_scan_run?.total_listings ?? null;
+  const processed_listings = live?.processed_listings ?? last_scan_run?.processed_listings ?? 0;
+  const now = Date.now();
+  const stage_elapsed_ms = live
+    ? now - live.stage_started_at
+    : stage === "fetching_listings" && last_scan_run?.started_at
+      ? now - last_scan_run.started_at.getTime()
+      : 0;
+  const item_elapsed_ms = live ? now - live.last_tick_at : 0;
+
+  const ui_outcome = deriveUiOutcome({
+    scan_status: last_scan_run?.status,
+    error_message: last_scan_run?.error_message,
+    issues_count: last_scan_run?.issues_count ?? 0,
+    warnings_count: last_scan_run?.warnings_count ?? 0,
+  });
+
+  const payload = {
     is_scanning: is_scanning_now,
     scan_started_at: last_scan_run?.started_at.toISOString() ?? null,
     last_scan_finished_at: last_scan_run?.finished_at?.toISOString() ?? null,
+    last_scan_status: last_scan_run?.status ?? null,
+    last_scan_error: last_scan_run?.error_message ?? null,
+    outcome_status: ui_outcome.outcome_status,
+    kept_previous_feed: ui_outcome.kept_previous_feed,
     devices_count: last_scan_run?.devices_count ?? 0,
-    stage: last_scan_run?.stage ?? null,
-    total_listings: last_scan_run?.total_listings ?? null,
-    processed_listings: last_scan_run?.processed_listings ?? 0,
-    percent: last_scan_run ? calculateScanPercent(last_scan_run) : 0,
+    stage,
+    total_listings: stage === "fetching_listings" ? null : total_listings,
+    processed_listings: stage === "fetching_listings" ? 0 : processed_listings,
+    percent: last_scan_run
+      ? calculateScanPercent({
+        status: last_scan_run.status,
+        stage,
+        total_listings,
+        processed_listings,
+        stage_elapsed_ms,
+        item_elapsed_ms,
+      })
+      : 0,
     issues_count: last_scan_run?.issues_count ?? 0,
     warnings_count: last_scan_run?.warnings_count ?? 0,
     last_scan_id: last_scan_run?.id ?? null,
+    dashboard,
   };
+
+  return {
+    ...payload,
+    cursor: buildScanCursor({
+      ...payload,
+      progress_tick: live?.last_tick_at ?? 0,
+    }),
+  };
+}
+
+export function buildScanCursor(status: {
+  is_scanning: boolean;
+  last_scan_id: string | null;
+  stage: string | null;
+  processed_listings: number;
+  last_scan_status: string | null;
+  outcome_status: string;
+  progress_tick?: number;
+}): string {
+  return [
+    status.is_scanning ? "1" : "0",
+    status.last_scan_id ?? "",
+    status.stage ?? "",
+    String(status.processed_listings),
+    status.last_scan_status ?? "",
+    status.outcome_status,
+    String(status.progress_tick ?? 0),
+  ].join("|");
+}
+
+export async function waitForScanCursorChange(
+  cursor: string,
+  timeout_ms: number,
+  signal?: AbortSignal,
+): Promise<"ready" | "timeout"> {
+  if (!cursor) return "ready";
+  return waitUntil({
+    timeout_ms,
+    signal,
+    subscribe: subscribeScanUpdate,
+    is_ready: async () => {
+      const status = await getScanStatus({ light: true });
+      return status.cursor !== cursor;
+    },
+  });
 }

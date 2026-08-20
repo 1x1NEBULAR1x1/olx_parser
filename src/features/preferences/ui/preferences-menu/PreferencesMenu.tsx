@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell, Settings, SlidersHorizontal } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { Bell, Heart, Settings, Shield, SlidersHorizontal, Smartphone } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { ThemeSwitcher } from "@/features/preferences/ui/theme-switcher/ThemeSwitcher";
 import { LanguageSwitcher } from "@/features/preferences/ui/language-switcher/LanguageSwitcher";
@@ -15,9 +17,12 @@ export function PreferencesMenu() {
   const t_notifications = useTranslations("notifications");
   const t_notification_settings = useTranslations("notification_settings");
   const t_theme = useTranslations("theme");
+  const pathname = usePathname() ?? "";
+  const { data: session } = useSession();
   const unread_count = useUnreadNotificationsCount();
   const [is_open, set_is_open] = useState(false);
   const root_ref = useRef<HTMLDivElement>(null);
+  const is_admin = session?.user?.role === "admin";
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -32,6 +37,29 @@ export function PreferencesMenu() {
   function closeMenu() {
     set_is_open(false);
   }
+
+  const nav_items = [
+    {
+      href: "/",
+      label: t_app("nav_feed"),
+      icon: Smartphone,
+      match: pathname === "/" || pathname.startsWith("/devices/"),
+    },
+    {
+      href: "/favorites",
+      label: t_app("nav_favorites"),
+      icon: Heart,
+      match: pathname.startsWith("/favorites"),
+    },
+    ...(is_admin
+      ? [{
+        href: "/admin",
+        label: t_app("nav_admin"),
+        icon: Shield,
+        match: pathname.startsWith("/admin"),
+      }]
+      : []),
+  ];
 
   return (
     <div className={styles.menu} ref={root_ref} data-testid="mobile-preferences-menu">
@@ -48,6 +76,26 @@ export function PreferencesMenu() {
       {is_open && (
         <div className={styles.menu_dropdown}>
           <div className={`${styles.menu_section} ${styles.menu_section_first}`}>
+            <span className={styles.menu_section_label}>{t_app("nav_section")}</span>
+            <div className={styles.menu_panel}>
+              {nav_items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`${styles.menu_item} ${item.match ? styles.menu_item_active : ""}`}
+                    onClick={closeMenu}
+                  >
+                    <Icon size={14} aria-hidden />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className={styles.menu_section}>
             <span className={styles.menu_section_label}>{t_app("program_section")}</span>
             <div className={styles.menu_panel}>
               <Link href="/settings" className={styles.menu_item} onClick={closeMenu}>

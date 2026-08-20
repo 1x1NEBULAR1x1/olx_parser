@@ -1,5 +1,5 @@
 import type { AllegroPart } from "@/shared/types/domain";
-import { getModelMarketPrice } from "@/server/domain/model-market-price-hints";
+import { resolveStartingMarketPrice } from "@/server/domain/model-market-price-hints";
 import {
   BASE_PART_PRICES,
   BRAND_PRICE_MULTIPLIER,
@@ -13,7 +13,7 @@ export const PART_ESTIMATE_MARKER = "★";
 
 /** Доля от ориентировочной цены устройства → типичная цена запчасти (PLN). */
 const MARKET_PRICE_PART_RATIOS: Record<string, number> = {
-  screen: 0.42,
+  screen: 0.24,
   battery: 0.11,
   back_cover: 0.08,
   charging_port: 0.055,
@@ -50,21 +50,36 @@ const MODEL_PART_HINTS: ModelPartHint[] = [
   { keyword: "iphone 13", parts: { screen: 580, battery: 175, back_cover: 130, charging_port: 95, camera: 190 } },
   { keyword: "iphone 12", parts: { screen: 480, battery: 150, back_cover: 110, charging_port: 85, camera: 160 } },
   { keyword: "iphone 11", parts: { screen: 380, battery: 130, back_cover: 95, charging_port: 75, camera: 130 } },
+  { keyword: "iphone 13 pro max", parts: { screen: 820, battery: 220, back_cover: 170, charging_port: 110, camera: 260 } },
+  { keyword: "iphone 12 pro max", parts: { screen: 620, battery: 170, back_cover: 130, charging_port: 95, camera: 200 } },
+  { keyword: "iphone 7", parts: { screen: 180, battery: 80, back_cover: 60, charging_port: 45, camera: 70 } },
   { keyword: "galaxy s25 ultra", parts: { screen: 1050, battery: 220, back_cover: 180, charging_port: 120, camera: 320 } },
+  { keyword: "galaxy s25 fe", parts: { screen: 480, battery: 160, back_cover: 110, charging_port: 80, camera: 190 } },
+  { keyword: "galaxy s25", parts: { screen: 680, battery: 180, back_cover: 130, charging_port: 95, camera: 230 } },
   { keyword: "galaxy s24 ultra", parts: { screen: 920, battery: 200, back_cover: 165, charging_port: 110, camera: 290 } },
   { keyword: "galaxy s24", parts: { screen: 620, battery: 165, back_cover: 120, charging_port: 90, camera: 210 } },
   { keyword: "galaxy s23 ultra", parts: { screen: 780, battery: 185, back_cover: 150, charging_port: 100, camera: 260 } },
   { keyword: "galaxy s23", parts: { screen: 520, battery: 145, back_cover: 105, charging_port: 85, camera: 185 } },
+  { keyword: "galaxy s20 fe", parts: { screen: 280, battery: 95, back_cover: 75, charging_port: 60, camera: 120 } },
+  { keyword: "s20fe", parts: { screen: 280, battery: 95, back_cover: 75, charging_port: 60, camera: 120 } },
+  { keyword: "galaxy s10", parts: { screen: 220, battery: 80, back_cover: 60, charging_port: 50, camera: 95 } },
+  { keyword: "galaxy s9", parts: { screen: 180, battery: 70, back_cover: 50, charging_port: 45, camera: 80 } },
+  { keyword: "galaxy z fold 7", parts: { screen: 1900, battery: 300, frame: 380 } },
   { keyword: "galaxy z fold 6", parts: { screen: 1800, battery: 280, frame: 350 } },
   { keyword: "galaxy z fold 5", parts: { screen: 1550, battery: 260, frame: 320 } },
+  { keyword: "galaxy z fold4", parts: { screen: 1400, battery: 240, frame: 300 } },
   { keyword: "galaxy z flip 6", parts: { screen: 980, battery: 190, frame: 240 } },
   { keyword: "galaxy z flip 5", parts: { screen: 820, battery: 175, frame: 210 } },
+  { keyword: "pixel 10 pro", parts: { screen: 780, battery: 190, back_cover: 140, charging_port: 100, camera: 260 } },
+  { keyword: "pixel 10", parts: { screen: 620, battery: 170, back_cover: 120, charging_port: 90, camera: 210 } },
   { keyword: "pixel 9 pro", parts: { screen: 720, battery: 175, back_cover: 130, charging_port: 95, camera: 240 } },
   { keyword: "pixel 8 pro", parts: { screen: 620, battery: 160, back_cover: 115, charging_port: 85, camera: 210 } },
   { keyword: "pixel 8", parts: { screen: 480, battery: 140, back_cover: 100, charging_port: 75, camera: 175 } },
   { keyword: "redmi note 13 pro", parts: { screen: 280, battery: 85, back_cover: 65, charging_port: 55, camera: 110 } },
   { keyword: "redmi note 12", parts: { screen: 220, battery: 70, back_cover: 55, charging_port: 45, camera: 90 } },
+  { keyword: "redmi 14", parts: { screen: 180, battery: 65, back_cover: 50, charging_port: 40, camera: 80 } },
   { keyword: "poco x6 pro", parts: { screen: 310, battery: 90, back_cover: 70, charging_port: 58, camera: 120 } },
+  { keyword: "xiaomi mi 15", parts: { screen: 620, battery: 170, back_cover: 120, charging_port: 90, camera: 220 } },
   { keyword: "oneplus 12", parts: { screen: 580, battery: 155, back_cover: 115, charging_port: 82, camera: 195 } },
   { keyword: "oneplus 11", parts: { screen: 450, battery: 130, back_cover: 95, charging_port: 72, camera: 165 } },
 ];
@@ -106,9 +121,9 @@ export function resolveStubPartPrice(
   const explicit = model_hint?.parts[damage_type];
   if (explicit !== undefined) return explicit;
 
-  const market_price = getModelMarketPrice(model_query, storage_gb);
-  if (market_price !== null) {
-    const ratio = MARKET_PRICE_PART_RATIOS[damage_type] ?? 0.05;
+  const market_price = resolveStartingMarketPrice(brand, model_query, storage_gb);
+  const ratio = MARKET_PRICE_PART_RATIOS[damage_type] ?? 0.05;
+  if (market_price > 0 && ratio > 0) {
     return Math.round(market_price * ratio);
   }
 
@@ -189,6 +204,26 @@ export function ensurePartsStubsForDamageTypes(
 
 export function isPartEstimate(part: AllegroPart): boolean {
   return part.is_estimate === true || part.title.includes(PART_ESTIMATE_MARKER);
+}
+
+/** Пересчитывает ★-оценки по текущим ориентирам — без ожидания нового скана. */
+export function refreshEstimatePartPrices(
+  parts: AllegroPart[],
+  brand: string,
+  model_query: string,
+  model_label: string,
+  storage_gb: number | null = null,
+): AllegroPart[] {
+  return parts.map((part) => {
+    if (!isPartEstimate(part) || !part.damage_type) return part;
+    return {
+      ...part,
+      price: resolveStubPartPrice(brand, model_query, part.damage_type, storage_gb),
+      title: part.title.includes(PART_ESTIMATE_MARKER)
+        ? part.title
+        : `${model_label || model_query} · ${part.damage_type} ${PART_ESTIMATE_MARKER}`,
+    };
+  });
 }
 
 export function getRepairabilityStub(brand: string): { repairability_score: number; repairability_scale: number } {

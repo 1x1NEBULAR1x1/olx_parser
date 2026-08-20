@@ -26,7 +26,7 @@ export const config = {
     olx_listings_state_delay_ms: Number(process.env.OLX_LISTINGS_STATE_DELAY_MS ?? 1200),
     olx_listings_retry_count: Number(process.env.OLX_LISTINGS_RETRY_COUNT ?? 3),
     olx_cookie: process.env.OLX_COOKIE ?? "",
-    allegro_parts_per_model: Number(process.env.PARTS_PER_MODEL ?? 5),
+    allegro_parts_per_model: Number(process.env.PARTS_PER_MODEL ?? 4),
     /** parts-store.pl GraphQL: параллельность и пауза между стартами */
     parts_store_concurrency: Number(process.env.PARTS_STORE_CONCURRENCY ?? 2),
     parts_store_min_interval_ms: Number(process.env.PARTS_STORE_MIN_INTERVAL_MS ?? 450),
@@ -43,6 +43,16 @@ export const config = {
     listing_analyze_timeout_ms: Number(process.env.LISTING_ANALYZE_TIMEOUT_MS ?? 90_000),
     /** Минимальная пауза между полными сканами (сек) — защита от OLX HTTP 403 */
     scan_min_interval_sec: Number(process.env.SCAN_MIN_INTERVAL_SEC ?? 120),
+    /** Не дергать Ceneo в hot path (часто анти-бот). */
+    skip_ceneo_parts: process.env.SKIP_CENEO !== "0",
+    /** Watchdog: running ScanRun старше N минут → failed. */
+    scan_stale_timeout_minutes: Number(process.env.SCAN_STALE_TIMEOUT_MINUTES ?? 90),
+    /** Повторно не анализировать объявления с тем же title+ценой. */
+    delta_scan_enabled: process.env.DELTA_SCAN !== "0",
+    /** Полный анализ только топ-N кандидатов, остальные — lightweight. */
+    two_phase_enabled: process.env.TWO_PHASE !== "0",
+    two_phase_full_analyze_limit: Number(process.env.TWO_PHASE_FULL_ANALYZE_LIMIT ?? 80),
+    two_phase_min_profit_pln: Number(process.env.TWO_PHASE_MIN_PROFIT_PLN ?? 80),
   },
 
   telegram: {
@@ -50,5 +60,13 @@ export const config = {
     // сообщения в Telegram (уведомления всё равно создаются "в приложении").
     bot_token: process.env.TELEGRAM_BOT_TOKEN ?? null,
     chat_id: process.env.TELEGRAM_CHAT_ID ?? null,
+  },
+
+  web_push: {
+    // VAPID-ключи: npx web-push generate-vapid-keys
+    // Без них Web Push не отправляется; in-app тосты — long-poll `/api/notifications/unread-count?wait=1`.
+    public_key: process.env.WEB_PUSH_VAPID_PUBLIC_KEY ?? null,
+    private_key: process.env.WEB_PUSH_VAPID_PRIVATE_KEY ?? null,
+    subject: process.env.WEB_PUSH_VAPID_SUBJECT ?? "mailto:admin@smartflip.local",
   },
 } as const;

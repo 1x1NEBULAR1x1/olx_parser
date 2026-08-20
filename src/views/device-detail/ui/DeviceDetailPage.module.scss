@@ -1,4 +1,34 @@
 .detail {
+  &_crumbs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    min-width: 0;
+    font-size: 13px;
+  }
+
+  &_crumbs_sep {
+    color: var(--color-text-faint);
+  }
+
+  &_crumbs_current {
+    color: var(--color-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &_body {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 16px 12px 40px;
+    animation: fade_in var(--motion-slow) var(--ease-out);
+
+    @media (min-width: 600px) {
+      padding: 24px 16px 48px;
+    }
+  }
   &_loading,
   &_error {
     display: flex;
@@ -9,6 +39,15 @@
     gap: 12px;
     font-size: 16px;
     color: var(--color-text-muted);
+  }
+
+  &_spinner {
+    width: 28px;
+    height: 28px;
+    border: 2.5px solid var(--color-primary-border);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 0.75s linear infinite;
   }
 
   &_back {
@@ -215,18 +254,13 @@
   }
 
   &_stats_grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     background: var(--color-surface-muted);
     border: 1px solid var(--color-border);
     border-radius: 12px;
     padding: 14px 16px;
-
-    @media (max-width: 480px) {
-      grid-template-columns: 1fr;
-      gap: 12px;
-    }
   }
 
   &_metrics_grid {
@@ -261,7 +295,25 @@
     }
   }
 
-  &_location,
+  &_location {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+
+    p {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+  }
+
   &_posted {
     font-size: 13px;
     color: var(--color-text-muted);
@@ -277,6 +329,15 @@
       color: var(--color-text-secondary);
       line-height: 1.6;
       white-space: pre-wrap;
+    }
+
+    &_loading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--color-text-muted);
+      margin: 0;
     }
   }
 
@@ -368,6 +429,10 @@
     padding: 10px;
   }
 
+  &_part_source {
+    margin-bottom: 6px;
+  }
+
   &_part_title {
     font-size: 12px;
     color: var(--color-text-secondary);
@@ -384,4 +449,8 @@
     font-weight: 700;
     color: var(--color-text);
   }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

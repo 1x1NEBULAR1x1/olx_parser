@@ -1,11 +1,15 @@
 import type { AnalyzedDevice } from "@/shared/types/domain";
-import { isPartEstimate } from "@/server/domain/repair-parts-stubs";
 import type { ScanIssueInput } from "@/server/repositories/scan-issues-repository";
 
 export type ScanIssueKind =
   | "listing_timeout"
   | "listing_fetch_failed"
   | "listing_analyze_error"
+  | "degraded_to_lightweight"
+  | "olx_page_failed"
+  | "olx_state_failed"
+  | "parts_source_failed"
+  | "feed_not_replaced"
   | "missing_repairability"
   | "repairability_stub"
   | "estimate_parts"
@@ -26,6 +30,19 @@ export function classifyListingError(message: string): ScanIssueKind {
   return "listing_analyze_error";
 }
 
+/** Рабочие заглушки пайплайна — не сигнал поломки, не пишем в журнал. */
+export const EXPECTED_SCAN_WARNING_KINDS = [
+  "empty_description",
+  "repairability_stub",
+  "estimate_parts",
+] as const;
+
+export function hasUsableDescription(post_summary: string | null | undefined): boolean {
+  if (!post_summary) return false;
+  const text = post_summary.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return text.length > 0;
+}
+
 export function detectDeviceWarnings(device: AnalyzedDevice): ScanIssueInput[] {
   const warnings: ScanIssueInput[] = [];
   const base = {
@@ -40,22 +57,6 @@ export function detectDeviceWarnings(device: AnalyzedDevice): ScanIssueInput[] {
       severity: "warning",
       kind: "missing_repairability",
       message: "Не найдена ремонтопригодность iFixit",
-    });
-  } else if (!device.ifixit_device_name && device.repairability_score !== null) {
-    warnings.push({
-      ...base,
-      severity: "warning",
-      kind: "repairability_stub",
-      message: "Ремонтопригодность — оценка по умолчанию, без iFixit",
-    });
-  }
-
-  if (device.allegro_parts.some((part) => isPartEstimate(part))) {
-    warnings.push({
-      ...base,
-      severity: "warning",
-      kind: "estimate_parts",
-      message: "Часть цен на запчасти — ориентировочная (★)",
     });
   }
 
@@ -90,15 +91,6 @@ export function detectDeviceWarnings(device: AnalyzedDevice): ScanIssueInput[] {
       severity: "warning",
       kind: "missing_photos",
       message: "Нет фото в объявлении",
-    });
-  }
-
-  if (!device.post_summary.trim()) {
-    warnings.push({
-      ...base,
-      severity: "warning",
-      kind: "empty_description",
-      message: "Пустое описание объявления",
     });
   }
 

@@ -16,6 +16,11 @@ export const LISTING_QUERY = `query ListingSearchQuery(
         photos {
           link
         }
+        description
+        user {
+          name
+          created
+        }
         params {
           key
           value {

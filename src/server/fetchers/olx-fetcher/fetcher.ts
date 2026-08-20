@@ -26,8 +26,11 @@ interface FetchOlxListingsPageOptions {
   state_filter?: string;
   /** Текстовый поиск (GraphQL key: query) */
   query?: string;
+  /** Точечная загрузка одного объявления по id (без category/state фильтров). */
+  listing_id?: number;
   sl?: string;
   cookie?: string;
+  signal?: AbortSignal;
 }
 
 export interface ParsedOlxListing {
@@ -41,6 +44,9 @@ export interface ParsedOlxListing {
   price_currency: string | null;
   is_negotiable: boolean | null;
   photos: string[];
+  description?: string;
+  seller_name?: string | null;
+  seller_member_since?: string | null;
 }
 
 interface FetchOlxListingsPageResult {
@@ -71,8 +77,15 @@ function buildOlxHttpError(status: number): Error {
 
 function createSearchParameters(
   options: Required<Pick<FetchOlxListingsPageOptions, "offset" | "limit" | "category_id" | "owner_type" | "state_filter">>
-    & Pick<FetchOlxListingsPageOptions, "sl" | "query">,
+    & Pick<FetchOlxListingsPageOptions, "sl" | "query" | "listing_id">,
 ): SearchParameter[] {
+  if (options.listing_id) {
+    return [
+      { key: "query", value: String(options.listing_id) },
+      { key: "limit", value: "1" },
+    ];
+  }
+
   return [
     { key: "offset", value: String(options.offset) },
     { key: "limit", value: String(options.limit) },
@@ -92,8 +105,10 @@ async function fetchOlxListingsPageOnce({
   owner_type = "private",
   state_filter = "damaged",
   query = "",
+  listing_id,
   sl = "",
   cookie = "",
+  signal,
 }: FetchOlxListingsPageOptions = {}): Promise<FetchOlxListingsPageResult> {
   const payload = {
     query: LISTING_QUERY,
@@ -105,6 +120,7 @@ async function fetchOlxListingsPageOnce({
         owner_type,
         state_filter,
         query,
+        listing_id,
         sl,
       }),
     },
@@ -136,6 +152,7 @@ async function fetchOlxListingsPageOnce({
       method: "POST",
       headers,
       body: JSON.stringify(payload),
+      signal,
     },
     12_000,
   );
@@ -170,6 +187,15 @@ async function fetchOlxListingsPageOnce({
   };
 }
 
+function isRetryableOlxError(error: Error): boolean {
+  const status_match = error.message.match(/OLX HTTP (\d+)/);
+  const status = status_match ? Number(status_match[1]) : 0;
+  if (isRetryableOlxStatus(status)) return true;
+  if (error.name === "TimeoutError" || error.name === "AbortError") return true;
+  return /timeout|aborted|fetch failed|ECONNRESET|ETIMEDOUT|UND_ERR|пустой ответ clientCompatibleListings/i
+    .test(`${error.name} ${error.message}`);
+}
+
 export async function fetchOlxListingsPage(
   options: FetchOlxListingsPageOptions = {},
 ): Promise<FetchOlxListingsPageResult> {
@@ -183,9 +209,8 @@ export async function fetchOlxListingsPage(
         return await fetchOlxListingsPageOnce(options);
       } catch (error) {
         last_error = error instanceof Error ? error : new Error(String(error));
-        const status_match = last_error.message.match(/OLX HTTP (\d+)/);
-        const status = status_match ? Number(status_match[1]) : 0;
-        const can_retry = isRetryableOlxStatus(status) && attempt < max_retries;
+        if (options.signal?.aborted) throw last_error;
+        const can_retry = isRetryableOlxError(last_error) && attempt < max_retries;
 
         if (!can_retry) throw last_error;
 
@@ -193,7 +218,7 @@ export async function fetchOlxListingsPage(
         olx_log.warn("Повтор запроса OLX после ошибки", {
           attempt: attempt + 1,
           max_retries,
-          status,
+          reason: last_error.message,
           backoff_ms,
           state_filter: options.state_filter,
           offset: options.offset,
@@ -206,61 +231,122 @@ export async function fetchOlxListingsPage(
   });
 }
 
+/** Описание и продавец одного лота. HTML-страница OLX часто отдаёт 403, GraphQL — нет. */
+export async function fetchOlxListingById(
+  listing_id: number,
+  signal?: AbortSignal,
+): Promise<ParsedOlxListing | null> {
+  const page = await fetchOlxListingsPage({ listing_id, limit: 1, signal });
+  return page.items.find((item) => item.id === listing_id) ?? null;
+}
+
+export interface OlxFetchIssue {
+  severity: "error" | "warning";
+  kind: "olx_page_failed" | "olx_state_failed";
+  message: string;
+  state_filter?: string;
+}
+
+export interface FetchOlxListingsResult {
+  items: ParsedOlxListing[];
+  issues: OlxFetchIssue[];
+  pages_ok: number;
+  pages_failed: number;
+  states_ok: string[];
+  states_failed: string[];
+}
+
 interface FetchAllListingsPagesOptions extends FetchOlxListingsPageOptions {
   max_pages?: number;
   start_offset?: number;
   limit?: number;
+  on_page?: () => void;
 }
 
 export async function fetchOlxAllListingsPages({
   max_pages = 10,
   start_offset = 0,
   limit = 40,
+  on_page,
   ...rest
-}: FetchAllListingsPagesOptions = {}): Promise<ParsedOlxListing[]> {
+}: FetchAllListingsPagesOptions = {}): Promise<{ items: ParsedOlxListing[]; issues: OlxFetchIssue[] }> {
   const all_items: ParsedOlxListing[] = [];
+  const issues: OlxFetchIssue[] = [];
   const seen_ids = new Set<number>();
   let current_offset = start_offset;
+  let consecutive_failures = 0;
 
   for (let page_index = 0; page_index < max_pages; page_index += 1) {
     if (page_index > 0) {
       await sleep(config.pipeline.olx_listings_page_delay_ms);
     }
 
-    const page_data = await fetchOlxListingsPage({
-      offset: current_offset,
-      limit,
-      ...rest,
-    });
+    try {
+      const page_data = await fetchOlxListingsPage({
+        offset: current_offset,
+        limit,
+        ...rest,
+      });
 
-    const page_items = page_data.items || [];
-    for (const item of page_items) {
-      if (!seen_ids.has(item.id)) {
-        seen_ids.add(item.id);
-        all_items.push(item);
+      const page_items = page_data.items || [];
+      for (const item of page_items) {
+        if (!seen_ids.has(item.id)) {
+          seen_ids.add(item.id);
+          all_items.push(item);
+        }
       }
-    }
 
-    if (page_items.length < limit) {
-      break;
-    }
+      consecutive_failures = 0;
+      on_page?.();
 
-    current_offset += limit;
+      if (page_items.length < limit) {
+        break;
+      }
+
+      current_offset += limit;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      consecutive_failures += 1;
+      issues.push({
+        severity: "error",
+        kind: "olx_page_failed",
+        message,
+        state_filter: rest.state_filter,
+      });
+      olx_log.warn("Страница OLX пропущена, идём к следующей", {
+        offset: current_offset,
+        state_filter: rest.state_filter,
+        reason: message,
+        kept: all_items.length,
+        consecutive_failures,
+      });
+      current_offset += limit;
+      if (consecutive_failures >= 2) break;
+    }
   }
 
-  return all_items;
+  return { items: all_items, issues };
 }
 
-interface FetchListingsForStatesOptions extends Omit<FetchAllListingsPagesOptions, "state_filter"> {
+interface FetchListingsForStatesOptions extends Omit<FetchAllListingsPagesOptions, "state_filter" | "on_page"> {
   states: string[];
+  on_fetch_page?: (pages_done: number, pages_total: number) => void;
 }
 
 export async function fetchOlxListingsForStates({
   states,
+  on_fetch_page,
+  max_pages = 10,
   ...rest
-}: FetchListingsForStatesOptions): Promise<ParsedOlxListing[]> {
+}: FetchListingsForStatesOptions): Promise<FetchOlxListingsResult> {
   const all_items: ParsedOlxListing[] = [];
+  const issues: OlxFetchIssue[] = [];
   const seen_ids = new Set<number>();
+  const states_ok: string[] = [];
+  const states_failed: string[] = [];
+  const pages_total = Math.max(1, states.length * max_pages);
+  let pages_done = 0;
+  let pages_ok = 0;
 
   for (let state_index = 0; state_index < states.length; state_index += 1) {
     const state_filter = states[state_index];
@@ -268,14 +354,52 @@ export async function fetchOlxListingsForStates({
       await sleep(config.pipeline.olx_listings_state_delay_ms);
     }
 
-    const items = await fetchOlxAllListingsPages({ ...rest, state_filter });
-    for (const item of items) {
-      if (!seen_ids.has(item.id)) {
-        seen_ids.add(item.id);
-        all_items.push(item);
+    try {
+      const page_result = await fetchOlxAllListingsPages({
+        ...rest,
+        max_pages,
+        state_filter,
+        on_page: () => {
+          pages_done += 1;
+          pages_ok += 1;
+          on_fetch_page?.(pages_done, pages_total);
+        },
+      });
+      issues.push(...page_result.issues);
+      if (page_result.issues.length > 0) {
+        states_failed.push(state_filter);
+      } else {
+        states_ok.push(state_filter);
       }
+      for (const item of page_result.items) {
+        if (!seen_ids.has(item.id)) {
+          seen_ids.add(item.id);
+          all_items.push(item);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      states_failed.push(state_filter);
+      issues.push({
+        severity: "error",
+        kind: "olx_state_failed",
+        message,
+        state_filter,
+      });
+      olx_log.warn("Состояние OLX пропущено, продолжаем остальные", {
+        state_filter,
+        reason: message,
+        kept: all_items.length,
+      });
     }
   }
 
-  return all_items;
+  return {
+    items: all_items,
+    issues,
+    pages_ok,
+    pages_failed: issues.filter((issue) => issue.kind === "olx_page_failed").length,
+    states_ok,
+    states_failed,
+  };
 }

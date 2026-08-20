@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Manrope } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { buildAntiFoucScript } from "@/shared/lib/theme";
 import { MuiProvider } from "@/shared/providers/mui-provider/MuiProvider";
 import { AuthProvider } from "@/shared/providers/auth-provider/AuthProvider";
 import { ThemeInit } from "@/shared/providers/theme-init/ThemeInit";
+import { NotificationDelivery } from "@/widgets/notification-delivery/ui/NotificationDelivery";
+import { AppHeader } from "@/widgets/app-header";
+import { HeaderActions } from "@/widgets/header/ui/header-actions/HeaderActions";
 import "./globals.scss";
 
-const inter = Inter({
-  subsets: ["latin", "latin-ext"],
+const manrope = Manrope({
+  subsets: ["latin", "latin-ext", "cyrillic"],
   display: "swap",
 });
 
@@ -34,11 +37,15 @@ export default async function RootLayout({
             светлую вёрстку (FOUC), пока клиентский ThemeSwitcher не смонтируется. */}
         <script dangerouslySetInnerHTML={{ __html: buildAntiFoucScript() }} />
       </head>
-      <body className={inter.className}>
+      <body className={manrope.className}>
         <NextIntlClientProvider locale={locale} messages={messages}>
           <ThemeInit />
           <AuthProvider>
-            <MuiProvider>{children}</MuiProvider>
+            <MuiProvider>
+              <AppHeader actions={<HeaderActions />} />
+              {children}
+              <NotificationDelivery />
+            </MuiProvider>
           </AuthProvider>
         </NextIntlClientProvider>
       </body>

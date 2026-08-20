@@ -1,13 +1,14 @@
 /**
  * Пул воркеров со скользящим окном конкурентности.
+ * Результаты сохраняют исходный порядок items (дырки — undefined, если fn бросил).
  */
 export async function runWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
   fn: (item: T) => Promise<R>,
   on_item_done?: () => void,
-): Promise<R[]> {
-  const results: R[] = [];
+): Promise<Array<R | undefined>> {
+  const results: Array<R | undefined> = new Array(items.length);
   let next_index = 0;
 
   async function worker(): Promise<void> {
@@ -15,9 +16,9 @@ export async function runWithConcurrency<T, R>(
       const current_index = next_index;
       next_index += 1;
       try {
-        results.push(await fn(items[current_index]));
+        results[current_index] = await fn(items[current_index]);
       } catch {
-        // Ошибка по одному элементу не останавливает остальные.
+        // Ошибка по одному элементу не останавливает остальные воркеры.
       } finally {
         on_item_done?.();
       }
@@ -31,9 +32,15 @@ export async function runWithConcurrency<T, R>(
   return results;
 }
 
-export function withTimeout<T>(promise: Promise<T>, timeout_ms: number, label: string): Promise<T> {
+export function withTimeout<T>(
+  promise: Promise<T>,
+  timeout_ms: number,
+  label: string,
+  abort_controller?: AbortController,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
+      abort_controller?.abort();
       reject(new Error(`timeout: ${label} (${timeout_ms}ms)`));
     }, timeout_ms);
     promise.then(

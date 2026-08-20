@@ -1,4 +1,5 @@
-import type { ParsedOlxListing } from "./fetcher";
+import { fetchOlxListingById, type ParsedOlxListing } from "./fetcher";
+import { decodeHtmlEntities, formatOlxMemberSince, sanitizeOlxDescription } from "./listing-text";
 import { getKeywordContexts } from "@/server/domain/text-match";
 import { createConcurrencyLimiter, fetchWithTimeout } from "@/server/shared/concurrency-limiter";
 
@@ -167,12 +168,25 @@ const HEALTH_MARKERS = [
   "nowa", "nowy", "nowe", "nowo",
   "sprawna", "sprawny", "sprawne", "sprawnie",
   "idealny", "idealna", "idealne", "idealnym",
-  "100", "wymieniona", "wymieniony", "wymienione", "wymieniana",
+  "perfekcyjn", "zadbany", "zadbana", "zadbane",
+  "100", "99", "98", "97", "96", "95", "94", "93", "92", "91", "90",
+  "wymieniona", "wymieniony", "wymienione", "wymieniana",
   "bez rys", "bez wad", "bez uszkodzen", "bez uszkodzeń",
   "bez zarzutu", "zero problemow", "zero problemów", "bez problemu", "bez problemow",
   "dziala bez", "działa bez", "dzialaja bez", "działają bez",
   "wszystko dziala", "wszystko działa", "w pelni sprawny", "w pełni sprawny",
   "jak nowy", "jak nowa", "jak nowe", "prawidlowo", "prawidłowo",
+  "dziala", "działa", "dzialajacy", "działający",
+  "caly", "cały", "cala", "cała", "cale", "całe",
+];
+
+// «ekran»/«kamera» в used-объявлениях часто про защиту, а не про ремонт:
+// "ekran zabezpieczony szkłem hartowanym 3mk". Без этих маркеров одно слово
+// «ekran» помечало целый телефон как поломку дисплея.
+const PROTECTION_MARKERS = [
+  "zabezpieczon", "ochronn", "hartowan", "folia", "3mk",
+  "szklo hartowane", "szkło hartowane", "szklo 9h", "szkło 9h",
+  "tempered",
 ];
 
 // Явные признаки повреждения — если встречаются в том же окне, что и ключевое
@@ -205,7 +219,8 @@ function isKeywordSurroundedByHealthMarker(context: string): boolean {
   if (damage_marker) {
     return isNegated(context, damage_marker);
   }
-  return HEALTH_MARKERS.some((marker) => context.includes(marker));
+  return HEALTH_MARKERS.some((marker) => context.includes(marker))
+    || PROTECTION_MARKERS.some((marker) => context.includes(marker));
 }
 
 // Фразы, которыми продавцы на OLX обычно указывают на наличие оригинальной
@@ -249,15 +264,6 @@ function normalizeText(input_text: string): string {
     .trim();
 }
 
-function decodeHtmlEntities(input_text: string): string {
-  return input_text
-    .replace(/&quot;/g, "\"")
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
-}
-
 function extractDeviceQueryFromTitle(title: string): string {
   const normalized_title = normalizeText(title);
   let device_query = normalized_title;
@@ -268,6 +274,13 @@ function extractDeviceQueryFromTitle(title: string): string {
   }
 
   return device_query.replace(/\s+/g, " ").trim();
+}
+
+export function detectDamageTypesFromText(
+  input_text: string,
+  battery_threshold_percent?: number | null,
+): string[] {
+  return detectDamageTypes(input_text, battery_threshold_percent);
 }
 
 function detectDamageTypes(input_text: string, battery_threshold_percent?: number | null): DamageType[] {
@@ -297,17 +310,17 @@ function detectDamageTypes(input_text: string, battery_threshold_percent?: numbe
     }
   }
 
-  // Числовой % АКБ, если он извлечён из объявления, ПЕРЕОПРЕДЕЛЯЕТ эвристику
-  // по ключевым словам — он точнее любых текстовых маркеров здоровья.
-  if (battery_threshold_percent != null) {
-    const battery_percent = extractBatteryHealthPercent(input_text);
-    if (battery_percent != null) {
-      const battery_index = detected_types.indexOf("battery");
-      if (battery_percent < battery_threshold_percent && battery_index === -1) {
-        detected_types.push("battery");
-      } else if (battery_percent >= battery_threshold_percent && battery_index !== -1) {
-        detected_types.splice(battery_index, 1);
-      }
+  // Числовой % АКБ всегда переопределяет keyword «bateria 99%» — иначе
+  // здоровый аккумулятор помечается как повреждение. Порог по умолчанию 80%,
+  // персональный порог пользователя применяется позже в applyUserDeviceView.
+  const battery_percent = extractBatteryHealthPercent(input_text);
+  if (battery_percent != null) {
+    const effective_threshold = battery_threshold_percent ?? 80;
+    const battery_index = detected_types.indexOf("battery");
+    if (battery_percent < effective_threshold && battery_index === -1) {
+      detected_types.push("battery");
+    } else if (battery_percent >= effective_threshold && battery_index !== -1) {
+      detected_types.splice(battery_index, 1);
     }
   }
 
@@ -447,7 +460,7 @@ function parseSellerFromOlxHtml(html: string): Pick<OlxListingPageData, "seller_
       };
       const user = next_data.props?.pageProps?.ad?.user;
       if (user?.name) seller_name = decodeHtmlEntities(user.name);
-      if (user?.created) seller_member_since = user.created;
+      if (user?.created) seller_member_since = formatOlxMemberSince(user.created);
       const ads_count = user?.adsCount ?? user?.ads_count;
       if (typeof ads_count === "number" && ads_count >= 0) seller_ads_count = ads_count;
     } catch {
@@ -468,20 +481,36 @@ function parseSellerFromOlxHtml(html: string): Pick<OlxListingPageData, "seller_
 
   if (!seller_member_since) {
     const since_match = html.match(/(?:na OLX od|członek od|member since)[^0-9]{0,20}(\d{4})/i);
-    if (since_match?.[1]) seller_member_since = since_match[1];
+    if (since_match?.[1]) seller_member_since = formatOlxMemberSince(since_match[1]);
   }
 
   return { seller_name, seller_ads_count, seller_member_since };
 }
 
-async function getOlxListingPageData(listing_url: string): Promise<OlxListingPageData> {
+function pageDataFromListing(listing: ParsedOlxListing): OlxListingPageData {
+  return {
+    post_summary: listing.description ?? "",
+    seller_name: listing.seller_name ?? null,
+    seller_ads_count: null,
+    seller_member_since: listing.seller_member_since ?? null,
+  };
+}
+
+async function getOlxListingPageDataFromHtml(
+  listing_url: string,
+  signal?: AbortSignal,
+): Promise<OlxListingPageData> {
   const response = await olx_page_limiter(() =>
     fetchWithTimeout(listing_url, {
       method: "GET",
       headers: {
+        accept: "text/html,application/xhtml+xml",
+        "accept-language": "pl-PL,pl;q=0.9,en;q=0.8",
+        referer: "https://www.olx.pl/",
         "user-agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
       },
+      signal,
     }, 8000),
   );
 
@@ -503,7 +532,7 @@ async function getOlxListingPageData(listing_url: string): Promise<OlxListingPag
         seller_info.seller_name = decodeHtmlEntities(parsed.seller.name);
       }
       if (typeof parsed.description === "string") {
-        return { post_summary: decodeHtmlEntities(parsed.description), ...seller_info };
+        return { post_summary: sanitizeOlxDescription(parsed.description), ...seller_info };
       }
     } catch {
       // Игнорируем JSON parse ошибки и пробуем meta description.
@@ -512,9 +541,42 @@ async function getOlxListingPageData(listing_url: string): Promise<OlxListingPag
 
   const meta_match = html.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
   return {
-    post_summary: meta_match?.[1] ? decodeHtmlEntities(meta_match[1]) : "",
+    post_summary: meta_match?.[1] ? sanitizeOlxDescription(meta_match[1]) : "",
     ...seller_info,
   };
+}
+
+async function getOlxListingPageData(
+  listing: ParsedOlxListing,
+  signal?: AbortSignal,
+): Promise<OlxListingPageData> {
+  const from_listing = pageDataFromListing(listing);
+  if (from_listing.post_summary.trim()) {
+    return from_listing;
+  }
+
+  try {
+    const fetched = await fetchOlxListingById(listing.id, signal);
+    if (fetched) {
+      const from_id = pageDataFromListing(fetched);
+      if (from_id.post_summary.trim() || from_id.seller_name) {
+        return {
+          post_summary: from_id.post_summary || from_listing.post_summary,
+          seller_name: from_id.seller_name ?? from_listing.seller_name,
+          seller_ads_count: from_id.seller_ads_count ?? from_listing.seller_ads_count,
+          seller_member_since: from_id.seller_member_since ?? from_listing.seller_member_since,
+        };
+      }
+    }
+  } catch {
+    try {
+      return await getOlxListingPageDataFromHtml(listing.url, signal);
+    } catch {
+      return from_listing;
+    }
+  }
+
+  return from_listing;
 }
 
 export interface OlxListingSignals {
@@ -540,9 +602,10 @@ export interface OlxListingSignals {
 export async function extractOlxListingSignals(
   listing: ParsedOlxListing,
   battery_threshold_percent?: number | null,
+  signal?: AbortSignal,
 ): Promise<OlxListingSignals> {
   const device_query = extractDeviceQueryFromTitle(listing.title);
-  const page_data = await getOlxListingPageData(listing.url);
+  const page_data = await getOlxListingPageData(listing, signal);
   const full_text = `${listing.title} ${page_data.post_summary}`;
   const damage_types = detectDamageTypes(full_text, battery_threshold_percent);
   const has_box = detectHasBox(full_text);

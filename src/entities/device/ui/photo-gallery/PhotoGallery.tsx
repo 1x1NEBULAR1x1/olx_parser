@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { normalizeExternalImageUrls } from "@/shared/lib/external-image";
 import styles from "./PhotoGallery.module.scss";
 
 interface PhotoGalleryProps {
@@ -43,7 +44,8 @@ export function PhotoGallery({
   const gallery_ref = useRef<HTMLDivElement>(null);
   const viewport_ref = useRef<HTMLDivElement>(null);
   const drag_start_x_ref = useRef<number | null>(null);
-  const photo_count = photos.length;
+  const resolved_photos = useMemo(() => normalizeExternalImageUrls(photos), [photos]);
+  const photo_count = resolved_photos.length;
 
   const goToPhoto = useCallback((index: number) => {
     set_active_photo((prev) => {
@@ -61,8 +63,8 @@ export function PhotoGallery({
   }, [photo_count]);
 
   useEffect(() => {
-    const gallery = gallery_ref.current;
-    if (!gallery || photo_count <= 1) return;
+    const viewport = viewport_ref.current;
+    if (!viewport || photo_count <= 1) return;
 
     let horizontal_accumulated = 0;
     let last_wheel_nav_at = 0;
@@ -89,8 +91,8 @@ export function PhotoGallery({
       navigateByWheel(direction);
     };
 
-    gallery.addEventListener("wheel", handleWheel, { passive: false, capture: true });
-    return () => gallery.removeEventListener("wheel", handleWheel, { capture: true });
+    viewport.addEventListener("wheel", handleWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", handleWheel);
   }, [photo_count]);
 
   const handleDragStart = useCallback((client_x: number) => {
@@ -160,13 +162,14 @@ export function PhotoGallery({
           className={styles.photo_gallery_track}
           style={{ transform: `translate3d(-${active_photo * 100}%, 0, 0)` }}
         >
-          {photos.map((photo, index) => (
+          {resolved_photos.map((photo, index) => (
             <img
               key={`${photo}-${index}`}
               src={photo}
               alt={`${alt} — ${index + 1}`}
               className={styles.photo_gallery_slide}
               loading={index === 0 ? "eager" : "lazy"}
+              referrerPolicy="no-referrer"
               draggable={false}
             />
           ))}
@@ -219,7 +222,7 @@ export function PhotoGallery({
 
           {!show_thumbnails && (
             <div className={styles.photo_gallery_dots} role="tablist" aria-label={t("photos")}>
-              {photos.map((_, index) => (
+              {resolved_photos.map((_, index) => (
                 <button
                   key={`dot-${index}`}
                   type="button"
@@ -243,7 +246,7 @@ export function PhotoGallery({
 
       {show_thumbnails && photo_count > 1 && (
         <div className={styles.photo_gallery_thumbs}>
-          {photos.map((photo, index) => (
+          {resolved_photos.map((photo, index) => (
             <button
               key={`thumb-${index}`}
               type="button"
@@ -255,7 +258,7 @@ export function PhotoGallery({
               aria-current={index === active_photo ? "true" : undefined}
               onClick={() => goToPhoto(index)}
             >
-              <img src={photo} alt="" />
+              <img src={photo} alt="" referrerPolicy="no-referrer" />
             </button>
           ))}
         </div>

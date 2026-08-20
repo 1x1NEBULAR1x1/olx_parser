@@ -51,6 +51,7 @@ export function LanguageSwitcher({ variant = "inline" }: LanguageSwitcherProps) 
           ].join(" ")}
           onClick={() => selectLocale(locale)}
           aria-pressed={locale === active_locale}
+          title={LOCALE_NAMES[locale]}
         >
           {variant === "stacked" ? LOCALE_NAMES[locale] : LOCALE_LABELS[locale]}
         </button>

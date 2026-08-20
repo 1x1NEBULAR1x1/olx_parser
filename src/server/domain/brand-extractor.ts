@@ -4,11 +4,13 @@ import { getModelMarketPrice } from "@/server/domain/model-market-price-hints";
 const KNOWN_BRANDS: Record<string, string[]> = {
   apple: ["apple", "iphone", "ipad"],
   samsung: ["samsung", "galaxy"],
-  xiaomi: ["xiaomi", "mi ", "mi12", "mi13", "mi14", "mi11", "mi10", "mi9"],
+  // Redmi/POCO раньше Xiaomi: иначе «Xiaomi Redmi 13» становится брендом xiaomi
+  // и model_key сваливается в «mi 13» (флагман), давая завышенную цену.
   redmi: ["redmi"],
   poco: ["poco"],
+  xiaomi: ["xiaomi", "mi ", "mi12", "mi13", "mi14", "mi11", "mi10", "mi9"],
   google: ["google", "pixel"],
-  motorola: ["motorola", "moto "],
+  motorola: ["motorola", "motoroli", "motorole", "moto "],
   huawei: ["huawei"],
   honor: ["honor"],
   oppo: ["oppo"],

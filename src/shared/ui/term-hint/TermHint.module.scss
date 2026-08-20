@@ -1,0 +1,37 @@
+.term {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  cursor: help;
+  text-align: left;
+  border-bottom: 1px dashed currentColor;
+
+  &_icon {
+    opacity: 0.55;
+    flex-shrink: 0;
+  }
+
+  &:hover,
+  &:focus-visible {
+    color: var(--color-primary);
+
+    .term_icon {
+      opacity: 1;
+    }
+  }
+
+  &_compact {
+    gap: 3px;
+    border-bottom-width: 0;
+    text-transform: inherit;
+    letter-spacing: inherit;
+  }
+}

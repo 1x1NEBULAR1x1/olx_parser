@@ -1,49 +1,46 @@
 "use client";
 
-import Link from "next/link";
 import { Heart } from "lucide-react";
 import { DeviceCard } from "@/entities/device/ui/device-card/DeviceCard";
-import { HeaderActions } from "@/widgets/header/ui/header-actions/HeaderActions";
 import { useDevicesFeed } from "@/features/scan-control/lib/useDevicesFeed";
 import { useTranslations } from "next-intl";
-import { Breadcrumbs, Link as MuiLink, Typography, useTheme } from "@mui/material";
 import {
-  AppShell, DeviceGrid, DeviceGridItem, EmptyState,
-  LoadingCenter, PageContainer, StickyHeader,
+  AppShell, DeviceGrid, DeviceGridItem, EmptyState, ErrorState,
+  FeedSkeleton, PageContainer, PageHeader,
 } from "@/shared/ui/page-layout";
+import { getErrorCopy } from "@/shared/lib/api-error";
+import type { DevicesListResponse } from "@/shared/types/api-contracts";
 
-export function FavoritesPage() {
+interface FavoritesPageProps {
+  initial_feed?: DevicesListResponse | null;
+}
+
+export function FavoritesPage({ initial_feed = null }: FavoritesPageProps) {
   const t = useTranslations("auth");
-  const theme = useTheme();
-  const { devices, initial_loading, reload } = useDevicesFeed({ favorites_only: true });
+  const te = useTranslations("errors");
+  const { devices, initial_loading, error, reload } = useDevicesFeed({
+    favorites_only: true,
+    load_all: true,
+    initial_feed,
+  });
 
   return (
     <AppShell>
-      <StickyHeader
-        breadcrumb={(
-          <Breadcrumbs sx={{ mb: 0.5, "& .MuiBreadcrumbs-li": { fontSize: "0.875rem" } }}>
-            <MuiLink component={Link} href="/" underline="hover" color="inherit" sx={{ fontWeight: 700 }}>
-              SmartFlip
-            </MuiLink>
-            <Typography color="text.secondary" sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-              <Heart size={16} color={theme.palette.primary.main} aria-hidden />
-              {t("favorites")}
-            </Typography>
-          </Breadcrumbs>
-        )}
-        title={null}
-        actions={<HeaderActions />}
-      />
-
       <PageContainer>
+        <PageHeader title={t("favorites")} />
         {initial_loading ? (
-          <LoadingCenter />
+          <FeedSkeleton count={3} />
+        ) : error && devices.length === 0 ? (
+          <ErrorState
+            message={getErrorCopy(error, te)}
+            onRetry={() => void reload()}
+          />
         ) : devices.length === 0 ? (
           <EmptyState icon={<Heart size={48} />} message={t("favorites_empty")} />
         ) : (
           <DeviceGrid>
-            {devices.map((device) => (
-              <DeviceGridItem key={device.id}>
+            {devices.map((device, index) => (
+              <DeviceGridItem key={device.id} index={index}>
                 <DeviceCard device={device} onListingChange={reload} />
               </DeviceGridItem>
             ))}

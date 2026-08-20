@@ -5,7 +5,12 @@
 set -euo pipefail
 
 HOST="${SMARTFLIP_HOST:-v915607.hosted-by-vdsina.com}"
-PROJECT_DIR="${SMARTFLIP_PROJECT_DIR:-/var/www/smartflip}"
+if [[ -d /home/olx_parser-main/deploy/nginx ]]; then
+  PROJECT_DIR="${SMARTFLIP_PROJECT_DIR:-/home/olx_parser-main}"
+else
+  PROJECT_DIR="${SMARTFLIP_PROJECT_DIR:-/var/www/smartflip}"
+fi
+APP_DIR="${SMARTFLIP_APP_DIR:-$PROJECT_DIR}"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Запустите: sudo bash $0"
@@ -44,11 +49,22 @@ done
 # установить smartflip из репозитория, если есть
 if [[ -f "${PROJECT_DIR}/deploy/nginx/smartflip.conf" ]]; then
   cp "${PROJECT_DIR}/deploy/nginx/smartflip.conf" /etc/nginx/sites-available/smartflip
-  sed -i "s/v915607.hosted-by-vdsina.com/${HOST}/g" /etc/nginx/sites-available/smartflip
-  echo "Скопирован ${PROJECT_DIR}/deploy/nginx/smartflip.conf"
+  # любой старый VDSina-поддомен или example → актуальный HOST
+  sed -i -E \
+    -e "s/v[0-9]+\\.hosted-by-vdsina\\.com/${HOST}/g" \
+    -e "s/smartflip\\.example\\.com//g" \
+    -e "s/server_name[[:space:]]+[^;]+;/server_name ${HOST};/" \
+    /etc/nginx/sites-available/smartflip
+  echo "Скопирован ${PROJECT_DIR}/deploy/nginx/smartflip.conf → server_name ${HOST}"
 elif [[ ! -f /etc/nginx/sites-available/smartflip ]]; then
   echo "ОШИБКА: нет smartflip.conf — скопируйте deploy/nginx/smartflip.conf вручную"
   exit 1
+else
+  sed -i -E \
+    -e "s/v[0-9]+\\.hosted-by-vdsina\\.com/${HOST}/g" \
+    -e "s/server_name[[:space:]]+[^;]+;/server_name ${HOST};/" \
+    /etc/nginx/sites-available/smartflip
+  echo "Обновлён server_name в существующем smartflip → ${HOST}"
 fi
 
 ln -sf /etc/nginx/sites-available/smartflip /etc/nginx/sites-enabled/smartflip
@@ -68,7 +84,27 @@ curl -sI -H "Host: ${HOST}" http://127.0.0.1/ | head -8
 
 echo
 echo "=== 7. SmartFlip :8080 ==="
-curl -sf http://127.0.0.1:8080/api/health && echo || echo "WARN: smartflip не слушает :8080 — systemctl status smartflip"
+if curl -sf http://127.0.0.1:8080/api/health >/dev/null 2>&1; then
+  curl -sf http://127.0.0.1:8080/api/health && echo
+else
+  echo "WARN: :8080 недоступен — перезапуск приложения..."
+  if [[ -f "${APP_DIR}/package.json" ]]; then
+    fuser -k 8080/tcp 2>/dev/null || true
+    pkill -f "next-server" 2>/dev/null || true
+    sleep 1
+    cd "${APP_DIR}"
+    sudo -u "${SUDO_USER:-root}" env APP_BIND_HOST=127.0.0.1 PORT=8080 \
+      nohup npm run start >> /tmp/smartflip.log 2>&1 &
+    sleep 4
+    curl -sf http://127.0.0.1:8080/api/health && echo || echo "FAIL: проверьте /tmp/smartflip.log"
+  else
+    echo "FAIL: нет ${APP_DIR}/package.json"
+  fi
+fi
+
+echo
+echo "=== 8. Location (должен быть ${HOST}, не relpen) ==="
+curl -sI -H "Host: ${HOST}" http://127.0.0.1/ | grep -iE '^(HTTP|location):' || true
 
 cat <<EOF
 
@@ -81,6 +117,7 @@ HTTPS:
   certbot --nginx -d ${HOST}
 
 .env:
-  NEXTAUTH_URL=https://${HOST}
+  NEXTAUTH_URL=http://${HOST}
   AUTH_TRUST_HOST=true
+  cd ${APP_DIR} && npm run build && env APP_BIND_HOST=127.0.0.1 PORT=8080 npm run start
 EOF

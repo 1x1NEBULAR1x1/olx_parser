@@ -94,6 +94,13 @@ model Device {
   profit_estimate      Float?
   profitability_pct    Float?
 
+  confidence_score                 Int?
+  confidence_label                 String?
+  risk_adjusted_profit             Float?
+  risk_adjusted_profitability_pct  Float?
+  parts_real_count                 Int      @default(0)
+  parts_estimate_count             Int      @default(0)
+
   liquidity_score      Float?
   liquidity_label      String?
 
@@ -125,6 +132,22 @@ model AppSettings {
   // TTL (часы) для БД-кеша ModelCache/PartsCostCache — см. model-cache.ts.
   // Диапазон 6ч-2160ч (~3 мес), задаётся слайдером в /settings.
   cache_ttl_hours                  Int      @default(72)
+  // Логистика и ремонт (PLN, ориентиры PL 2026 — InPost/kurier).
+  shipping_parts_pln               Float    @default(14)
+  shipping_to_repair_pln           Float    @default(18)
+  shipping_to_customer_pln         Float    @default(14)
+  repair_labor_base_pln            Float    @default(80)
+  // Тарифы подписки SmartFlip (PLN/мес), для отображения и расчётов.
+  subscription_basic_pln           Float    @default(0)
+  subscription_pro_pln             Float    @default(49)
+  // Allegro HTML/API — только ручной запуск из админки (DataDome).
+  allegro_parts_auto_enabled       Boolean  @default(false)
+  // Авто-заполнение каталога моделей (iFixit + запчасти). 0 = выкл.
+  catalog_auto_enrich_interval_minutes Int @default(0)
+  // Пауза и повторы, если сайт запчастей отдал антибот (Allegro/Ceneo/OLX/магазины).
+  catalog_antibot_wait_seconds     Int      @default(45)
+  catalog_antibot_retries          Int      @default(2)
+  catalog_source_delay_ms          Int      @default(400)
   updatedAt                        DateTime @updatedAt
 }
 
@@ -160,11 +183,100 @@ model ModelCache {
   ifixit_device_name   String?
   ifixit_url           String?
   avg_market_price     Float?
+  kimovil_geek_score       Float?
+  kimovil_user_score       Float?
+  kimovil_combined_score   Float?
+  kimovil_matched_name     String?
   fetched_at           DateTime @default(now())
   expires_at           DateTime
 
   @@unique([brand, model_key])
   @@index([expires_at])
+}
+
+// Каталог моделей: агрегированные данные для ускорения анализа и ручная коррекция.
+model DeviceCatalogEntry {
+  id                           Int       @id @default(autoincrement())
+  brand                        String
+  model_key                    String
+  model_label                  String    @default("")
+  model_line                   String    @default("")
+  model_line_label             String    @default("")
+  model_query                  String    @default("")
+  release_year                 Int?
+
+  repairability_score          Float?
+  repairability_scale          Float?
+  ifixit_device_name           String?
+  ifixit_url                   String?
+
+  market_sell_price            Float?
+  market_sell_price_source     String?
+
+  manual_repairability_score   Float?
+  manual_repairability_scale   Float?
+  manual_market_sell_price     Float?
+  manual_storage_prices        String?
+  manual_repair_complexity_pct Float?
+  lock_repairability           Boolean   @default(false)
+  lock_market_price            Boolean   @default(false)
+  notes                        String?
+
+  enrichment_status            String    @default("pending")
+  last_enriched_at             DateTime?
+  last_enrichment_error        String?
+  listings_seen_count          Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([brand, model_key])
+  @@index([enrichment_status])
+  @@index([brand])
+}
+
+model CatalogEnrichmentRun {
+  id               String    @id @default(cuid())
+  status           String
+  started_at       DateTime  @default(now())
+  finished_at      DateTime?
+  total_models     Int       @default(0)
+  processed_models Int       @default(0)
+  error_message    String?
+  trigger          String    @default("manual")
+
+  @@index([status])
+  @@index([started_at])
+}
+
+/// Живой снимок заполнения каталога: общий для route-инстансов (next dev HMR).
+model CatalogJobState {
+  id            Int      @id
+  progress_json String?
+  updatedAt     DateTime @updatedAt
+}
+
+model PriceHistorySnapshot {
+  id                   Int      @id @default(autoincrement())
+  scan_id              String
+  brand                String
+  model_key            String
+  storage_gb           Int?
+  median_working_price Float
+  sample_count         Int
+  recorded_at          DateTime @default(now())
+
+  @@index([brand, model_key])
+  @@index([scan_id])
+  @@index([recorded_at])
+}
+
+model ScanCoordinator {
+  id               Int       @id @default(1)
+  is_scan_active   Boolean   @default(false)
+  active_scan_id   String?
+  locked_until     DateTime?
+  updatedAt        DateTime  @updatedAt
 }
 
 // L2-кеш стоимости запчастей — отдельно от ModelCache, т.к. набор запчастей
@@ -185,11 +297,12 @@ model PartsCostCache {
   @@index([expires_at])
 }
 
-// Синглтон (id=1) — настройки уведомлений о "хороших позициях". Списки
-// брендов/моделей/регионов хранятся как JSON-массивы строк (пустой массив =
-// "любой", без ограничения).
-model NotificationSettings {
-  id                    Int      @id @default(1)
+// Персональные критерии "хорошей позиции" (1:1 с User). Списки брендов/
+// моделей/регионов — JSON-массивы строк (пустой массив = "любой").
+model UserNotificationSettings {
+  id                    Int      @id @default(autoincrement())
+  user_id               String   @unique
+  user                  User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   enabled               Boolean  @default(false)
   brands                String   @default("[]")
   model_keys            String   @default("[]")
@@ -198,14 +311,17 @@ model NotificationSettings {
   min_price             Float?
   max_price             Float?
   regions               String   @default("[]")
+  createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
 
-// Денормализованный снимок объявления на момент уведомления — БЕЗ связи с
-// Device, потому что таблица Device полностью перезаписывается на каждом
-// скане (saveDevices#deleteMany), а уведомление должно переживать это.
+// Денормализованный снимок объявления на момент уведомления — БЕЗ FK на
+// Device (таблица Device перезаписывается на каждом скане). Привязка к User —
+// у каждого пользователя своя лента и свои критерии.
 model Notification {
   id                Int      @id @default(autoincrement())
+  user_id           String
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   olx_listing_id    Int
   title             String
   olx_url           String
@@ -216,17 +332,31 @@ model Notification {
   region            String?
   photo_url         String?
   is_read           Boolean  @default(false)
+  // "scan" — после скана по критериям; "test" — ручной тест из админки;
+  // "scan_health" — сбой/деградация скана (лента могла остаться прежней).
+  source            String   @default("scan")
+  // "skipped" | "sent" | "failed" | "not_configured"
+  telegram_status   String   @default("skipped")
+  telegram_error    String?
   created_at        DateTime @default(now())
 
-  @@index([is_read])
+  @@index([user_id, is_read])
   @@index([created_at])
+  @@index([source])
 }
 
-// Дедупликация уведомлений между сканами — одно и то же объявление (стабильный
-// OLX id) не должно уведомляться повторно на каждом следующем скане.
+// Дедупликация per-user: одно и то же OLX-объявление не спамит одного
+// пользователя повторно на следующих сканах; другой пользователь всё ещё
+// может получить своё уведомление.
 model NotifiedListing {
-  olx_listing_id Int      @id
+  id             Int      @id @default(autoincrement())
+  user_id        String
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  olx_listing_id Int
   notified_at    DateTime @default(now())
+
+  @@unique([user_id, olx_listing_id])
+  @@index([user_id])
 }
 
 // --- NextAuth + пользователи ---
@@ -241,14 +371,34 @@ model User {
   is_approved    Boolean   @default(false)
   accounts       Account[]
   sessions       Session[]
-  favorites         FavoriteDevice[]
-  hidden_devices    HiddenDevice[]
-  display_settings  UserDisplaySettings?
+  favorites            FavoriteDevice[]
+  hidden_devices       HiddenDevice[]
+  display_settings     UserDisplaySettings?
+  notification_settings UserNotificationSettings?
+  notifications        Notification[]
+  notified_listings    NotifiedListing[]
+  push_subscriptions   PushSubscription[]
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   @@index([is_approved])
   @@index([role])
+}
+
+// Web Push подписка браузера (endpoint уникален; у пользователя может быть
+// несколько устройств/браузеров).
+model PushSubscription {
+  id         Int      @id @default(autoincrement())
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  user_agent String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([user_id])
 }
 
 // Персональные настройки отображения ленты (1:1 с User).
@@ -261,6 +411,10 @@ model UserDisplaySettings {
   exclude_iphone        Boolean  @default(false)
   exclude_android       Boolean  @default(false)
   battery_health_threshold_percent Int @default(80)
+  // Скрывать объявления, у которых прибыль ниже порога в zł и/или % от цены покупки.
+  exclude_unprofitable          Boolean @default(false)
+  min_profit_pln                Float   @default(0)
+  min_profit_pct_of_price       Float   @default(0)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }

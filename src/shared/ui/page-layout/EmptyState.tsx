@@ -1,19 +1,23 @@
 "use client";
 
-import { Box, Typography } from "@mui/material";
+import styles from "./EmptyState.module.scss";
 
 interface EmptyStateProps {
   icon: React.ReactNode;
+  title?: string;
   message: string;
+  action?: React.ReactNode;
 }
 
-export function EmptyState({ icon, message }: EmptyStateProps) {
+export function EmptyState({ icon, title, message, action }: EmptyStateProps) {
   return (
-    <Box sx={{ textAlign: "center", py: 12, color: "text.secondary" }}>
-      <Box sx={{ mb: 2, opacity: 0.6, display: "flex", justifyContent: "center" }}>
+    <div className={styles.empty_state}>
+      <div className={styles.empty_state_icon} aria-hidden>
         {icon}
-      </Box>
-      <Typography variant="body1">{message}</Typography>
-    </Box>
+      </div>
+      {title && <h2 className={styles.empty_state_title}>{title}</h2>}
+      <p className={styles.empty_state_message}>{message}</p>
+      {action && <div className={styles.empty_state_action}>{action}</div>}
+    </div>
   );
 }

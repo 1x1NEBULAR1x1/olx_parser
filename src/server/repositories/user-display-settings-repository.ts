@@ -6,6 +6,9 @@ export interface UserDisplaySettingsData {
   exclude_iphone: boolean;
   exclude_android: boolean;
   battery_health_threshold_percent: number;
+  exclude_unprofitable: boolean;
+  min_profit_pln: number;
+  min_profit_pct_of_price: number;
 }
 
 function toUserDisplaySettingsData(settings: {
@@ -14,6 +17,9 @@ function toUserDisplaySettingsData(settings: {
   exclude_iphone: boolean;
   exclude_android: boolean;
   battery_health_threshold_percent: number;
+  exclude_unprofitable: boolean;
+  min_profit_pln: number;
+  min_profit_pct_of_price: number;
 }): UserDisplaySettingsData {
   return {
     exclude_junk_listings: settings.exclude_junk_listings,
@@ -21,6 +27,9 @@ function toUserDisplaySettingsData(settings: {
     exclude_iphone: settings.exclude_iphone,
     exclude_android: settings.exclude_android,
     battery_health_threshold_percent: settings.battery_health_threshold_percent,
+    exclude_unprofitable: settings.exclude_unprofitable,
+    min_profit_pln: settings.min_profit_pln,
+    min_profit_pct_of_price: settings.min_profit_pct_of_price,
   };
 }
 

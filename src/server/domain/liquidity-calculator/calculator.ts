@@ -34,12 +34,15 @@ import {
   SERIES_KEYWORD_MULTIPLIER,
   STORAGE_SCORE_BY_GB,
 } from "./constants";
+import { getKimovilScoresCached } from "./kimovil-cache";
 import { getKimovilScoresByModel } from "./kimovil-fetcher";
 import { containsKeyword } from "@/server/domain/text-match";
 
 export interface DeviceLiquidityInput {
   brand_name: string;
   model_name: string;
+  model_key?: string;
+  cache_ttl_hours?: number;
   release_year: number;
   condition_score: number;
   storage_gb?: number;
@@ -462,7 +465,14 @@ export class DeviceLiquidityScenario {
       return this.input;
     }
 
-    const kimovil_scores = await getKimovilScoresByModel(this.input.model_name);
+    const kimovil_scores = this.input.model_key
+      ? await getKimovilScoresCached(
+        this.input.brand_name,
+        this.input.model_key,
+        this.input.model_name,
+        this.input.cache_ttl_hours ?? 72,
+      )
+      : await getKimovilScoresByModel(this.input.model_name);
     if (
       typeof kimovil_scores.geek_score !== "number" &&
       typeof kimovil_scores.user_score !== "number"

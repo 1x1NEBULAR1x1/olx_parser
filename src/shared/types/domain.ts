@@ -1,4 +1,4 @@
-export type PartSource = "allegro" | "olx" | "parts_store" | "ceneo" | "estimate";
+export type PartSource = "allegro" | "olx" | "parts_store" | "shop" | "ceneo" | "estimate";
 
 export interface AllegroPart {
   title: string;
@@ -53,6 +53,13 @@ export interface AnalyzedDevice {
   market_sell_price_source: "model_median" | "cached_median" | "model_hint" | "brand_estimate" | null;
   profit_estimate: number | null;
   profitability_pct: number | null;
+
+  confidence_score: number | null;
+  confidence_label: "high" | "medium" | "low" | null;
+  risk_adjusted_profit: number | null;
+  risk_adjusted_profitability_pct: number | null;
+  parts_real_count: number;
+  parts_estimate_count: number;
 
   liquidity_score: number | null;
   liquidity_label: string | null;

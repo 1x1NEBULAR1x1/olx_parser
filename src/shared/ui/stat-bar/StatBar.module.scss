@@ -12,15 +12,15 @@
 
   &_label {
     font-size: 10px;
-    font-weight: 600;
-    color: var(--color-text-muted);
+    font-weight: 700;
+    color: var(--color-text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
   }
 
   &_value {
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 750;
     color: var(--color-text);
     flex-shrink: 0;
   }
@@ -59,7 +59,7 @@
     }
 
     .stat_bar_label {
-      font-size: 8px;
+      font-size: 10px;
       line-height: 1.2;
       white-space: nowrap;
       overflow: hidden;
@@ -68,7 +68,7 @@
     }
 
     .stat_bar_value {
-      font-size: 11px;
+      font-size: 13px;
       line-height: 1.2;
     }
 

@@ -1,8 +1,16 @@
+"use client";
+
 import styles from "./FilterBar.module.scss";
 import { useTranslations } from "next-intl";
+import { TermHint } from "@/shared/ui/term-hint/TermHint";
 import { CheckboxGroup, type CheckboxOption } from "@/shared/ui/checkbox-group/CheckboxGroup";
 import { RangeSlider } from "@/shared/ui/range-slider/RangeSlider";
 import { BrandTreeFilter } from "@/features/device-filter/ui/brand-tree-filter/BrandTreeFilter";
+import {
+  selectBrandTreeBrands,
+  selectBrandTreeLines,
+  selectBrandTreeModels,
+} from "@/features/device-filter/lib/brand-tree-selection";
 import type { BrandFilterTreeNode } from "@/shared/api/client";
 import { DEFAULT_FILTERS, isFilterBarEmpty, type FilterValues } from "@/features/device-filter/model/filter-values";
 
@@ -31,7 +39,7 @@ interface FilterBarProps {
 
 export function FilterBar({
   filters, onChange,
-  brand_tree, models_by_brand, model_lines_by_brand, damage_type_counts, region_options,
+  brand_tree, damage_type_counts, region_options,
   price_bounds, profitability_bounds, liquidity_bounds, year_bounds,
 }: FilterBarProps) {
   const t = useTranslations("filters");
@@ -46,23 +54,15 @@ export function FilterBar({
   }
 
   function handleBrandsChange(next_brands: string[]) {
-    const removed_brands = filters.brands.filter((b) => !next_brands.includes(b));
-    const next_models = removed_brands.length > 0
-      ? filters.models.filter((model_key) => {
-          const owning_brand = Object.entries(models_by_brand)
-            .find(([, options]) => options.some((o) => o.value === model_key))?.[0];
-          return !owning_brand || !removed_brands.includes(owning_brand);
-        })
-      : filters.models;
-    const next_model_lines = removed_brands.length > 0
-      ? filters.model_lines.filter((model_line) => {
-          const owning_brand = Object.entries(model_lines_by_brand)
-            .find(([, options]) => options.some((o) => o.value === model_line))?.[0];
-          return !owning_brand || !removed_brands.includes(owning_brand);
-        })
-      : filters.model_lines;
+    onChange(selectBrandTreeBrands(brand_tree, filters, next_brands));
+  }
 
-    onChange({ ...filters, brands: next_brands, models: next_models, model_lines: next_model_lines });
+  function handleModelLinesChange(next_model_lines: string[]) {
+    onChange(selectBrandTreeLines(brand_tree, filters, next_model_lines));
+  }
+
+  function handleModelsChange(next_models: string[]) {
+    onChange(selectBrandTreeModels(brand_tree, filters, next_models));
   }
 
   const damage_type_options: CheckboxOption[] = DAMAGE_TYPES.map((dt) => ({
@@ -74,7 +74,7 @@ export function FilterBar({
   const has_active = !isFilterBarEmpty(filters);
 
   return (
-    <aside className={styles.filter_bar}>
+    <aside className={styles.filter_bar} data-testid="filter-bar">
       <div className={styles.filter_bar_title}>{t("title")}</div>
 
       <div className={styles.filter_bar_group}>
@@ -85,8 +85,8 @@ export function FilterBar({
           selected_models={filters.models}
           selected_model_lines={filters.model_lines}
           onBrandsChange={handleBrandsChange}
-          onModelsChange={(next_models) => update("models", next_models)}
-          onModelLinesChange={(next_model_lines) => update("model_lines", next_model_lines)}
+          onModelsChange={handleModelsChange}
+          onModelLinesChange={handleModelLinesChange}
           empty_label={t("no_options")}
         />
       </div>
@@ -124,7 +124,9 @@ export function FilterBar({
       </div>
 
       <div className={styles.filter_bar_group}>
-        <label className={styles.filter_bar_label}>{t("min_repairability")}</label>
+        <label className={styles.filter_bar_label}>
+          <TermHint label={t("min_repairability")} hint={t("min_repairability_hint")} />
+        </label>
         <input
           type="number"
           className={styles.filter_bar_input}
@@ -138,7 +140,9 @@ export function FilterBar({
       </div>
 
       <div className={styles.filter_bar_group}>
-        <label className={styles.filter_bar_label}>{t("profitability_range")}</label>
+        <label className={styles.filter_bar_label}>
+          <TermHint label={t("profitability_range")} hint={t("profitability_hint")} />
+        </label>
         <RangeSlider
           min={profitability_bounds[0]}
           max={profitability_bounds[1]}
@@ -150,7 +154,9 @@ export function FilterBar({
       </div>
 
       <div className={styles.filter_bar_group}>
-        <label className={styles.filter_bar_label}>{t("liquidity_range")}</label>
+        <label className={styles.filter_bar_label}>
+          <TermHint label={t("liquidity_range")} hint={t("liquidity_hint")} />
+        </label>
         <RangeSlider
           min={liquidity_bounds[0]}
           max={liquidity_bounds[1]}

@@ -1,0 +1,18 @@
+.page_container {
+  width: 100%;
+  margin: 0 auto;
+  padding: 16px max(12px, env(safe-area-inset-right)) 40px max(12px, env(safe-area-inset-left));
+  animation: fade_in var(--motion-slow) var(--ease-out);
+
+  @media (min-width: 600px) {
+    padding: 24px 24px 56px;
+  }
+
+  &_md {
+    max-width: 840px;
+  }
+
+  &_xl {
+    max-width: 1280px;
+  }
+}

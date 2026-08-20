@@ -4,16 +4,20 @@ import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useTranslations } from "next-intl";
 import {
-  Button, Chip, CircularProgress, Paper, Stack,
+  Button, Chip, Paper, Stack,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography,
 } from "@mui/material";
 import { fetchAdminUsers, patchAdminUser, type AdminUserRow } from "@/shared/api/client";
+import { ErrorState, LoadingCenter } from "@/shared/ui/page-layout";
+import { getErrorCopy } from "@/shared/lib/api-error";
 
 export function AdminUsersPage() {
   const t = useTranslations("admin");
+  const te = useTranslations("errors");
   const { data: session } = useSession();
   const [users, set_users] = useState<AdminUserRow[]>([]);
   const [loading, set_loading] = useState(true);
+  const [error, set_error] = useState<unknown>(null);
   const [updating_id, set_updating_id] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
@@ -21,6 +25,9 @@ export function AdminUsersPage() {
     try {
       const rows = await fetchAdminUsers();
       set_users(rows);
+      set_error(null);
+    } catch (caught) {
+      set_error(caught);
     } finally {
       set_loading(false);
     }
@@ -61,10 +68,12 @@ export function AdminUsersPage() {
       </Typography>
 
       {loading ? (
-        <Stack direction="row" spacing={1} color="text.secondary">
-          <CircularProgress size={18} color="inherit" />
-          <Typography variant="body2">{t("loading")}</Typography>
-        </Stack>
+        <LoadingCenter label={t("loading")} compact />
+      ) : error && users.length === 0 ? (
+        <ErrorState
+          message={getErrorCopy(error, te)}
+          onRetry={() => void loadUsers()}
+        />
       ) : (
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
@@ -100,7 +109,7 @@ export function AdminUsersPage() {
                     </TableCell>
                     <TableCell>
                       <Typography variant="caption" color="text.secondary">
-                        ♥ {user.favorites_count} · ✕ {user.hidden_count}
+                        {t("favorites_short", { count: user.favorites_count })} · {t("hidden_short", { count: user.hidden_count })}
                       </Typography>
                     </TableCell>
                     <TableCell>

@@ -1,0 +1,37 @@
+.banner {
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--color-primary-bg);
+  border-color: var(--color-primary-border);
+
+  &_error {
+    background: var(--color-negative-bg, #fdecea);
+    border-color: var(--color-negative-border, #f5c2c0);
+  }
+
+  &_spinner {
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    border: 2px solid var(--color-primary-border);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: catalog_job_spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  &_icon_wait {
+    color: var(--color-warning, #c47b16);
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+}
+
+@keyframes catalog_job_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

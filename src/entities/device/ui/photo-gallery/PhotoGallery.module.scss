@@ -129,18 +129,10 @@
 
   &_thumbs {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     padding: 12px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x pan-y;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
+    overflow: visible;
 
     @media (max-width: 639px) {
       padding: 8px;

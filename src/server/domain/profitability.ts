@@ -1,6 +1,11 @@
 import type { AllegroPart, AnalyzedDevice } from "@/shared/types/domain";
 import { computeMedian } from "@/server/domain/parts-shared";
 import { isPartEstimate } from "@/server/domain/repair-parts-stubs";
+import {
+  calculateDealProfit,
+  type DealLogistics,
+  type DealProfitResult,
+} from "@/shared/lib/deal-economics";
 
 interface ProfitabilityInput {
   price_buy: number | null;
@@ -8,13 +13,11 @@ interface ProfitabilityInput {
   market_sell_price: number | null;
   repairability_score: number | null;
   repairability_scale: number | null;
+  manual_repair_complexity_pct?: number | null;
+  logistics?: DealLogistics | null;
 }
 
-export interface ProfitabilityResult {
-  parts_cost_estimate: number | null;
-  profit_estimate: number | null;
-  profitability_pct: number | null;
-}
+export type ProfitabilityResult = DealProfitResult;
 
 /** Сумма по типам повреждения: медиана цены на тип (реальные объявления), не минимум. */
 export function estimatePartsCost(parts: AllegroPart[]): number | null {
@@ -48,53 +51,28 @@ export function estimatePartsCost(parts: AllegroPart[]): number | null {
 }
 
 export function calculateProfitability(input: ProfitabilityInput): ProfitabilityResult {
-  const { price_buy, parts, market_sell_price, repairability_score, repairability_scale } = input;
-
-  if (!price_buy || price_buy <= 0) {
-    return { parts_cost_estimate: null, profit_estimate: null, profitability_pct: null };
-  }
-
-  const parts_cost_estimate = estimatePartsCost(parts);
-
-  if (!market_sell_price) {
-    return { parts_cost_estimate, profit_estimate: null, profitability_pct: null };
-  }
-
-  // Штраф за низкий ремонтопригодность — добавляем к стоимости ремонта
-  let repair_complexity_factor = 1.0;
-  if (repairability_score !== null && repairability_scale !== null && repairability_scale > 0) {
-    const normalized = repairability_score / repairability_scale;
-    // Низкая ремонтопригодность → выше трудозатраты (наценка 10-30%)
-    repair_complexity_factor = 1 + (1 - normalized) * 0.3;
-  }
-
-  const effective_parts_cost = (parts_cost_estimate ?? 0) * repair_complexity_factor;
-  // Закладываем 15% на непредвиденные расходы и работу мастера
-  const total_costs = price_buy + effective_parts_cost * 1.15;
-
-  const profit_estimate = Math.round(market_sell_price - total_costs);
-  // Рентабельность вложений считаем от total_costs (цена покупки + затраты на
-  // ремонт с наценкой), а не только от price_buy: инвестор вкладывает деньги
-  // и в покупку, и в ремонт, поэтому ROI должен делиться на всю вложенную
-  // сумму. Деление только на price_buy искусственно завышало % рентабельности
-  // для объявлений с дорогим ремонтом (тот же profit_estimate делился на
-  // меньшую базу).
-  const profitability_pct = Math.round((profit_estimate / total_costs) * 100);
-
-  return {
-    parts_cost_estimate: parts_cost_estimate !== null ? Math.round(effective_parts_cost) : null,
-    profit_estimate,
-    profitability_pct,
-  };
+  return calculateDealProfit({
+    price_buy: input.price_buy,
+    parts_cost_estimate: estimatePartsCost(input.parts),
+    market_sell_price: input.market_sell_price,
+    repairability_score: input.repairability_score,
+    repairability_scale: input.repairability_scale,
+    manual_repair_complexity_pct: input.manual_repair_complexity_pct,
+    logistics: input.logistics,
+  });
 }
 
-export function enrichDeviceProfitability(device: AnalyzedDevice): AnalyzedDevice {
+export function enrichDeviceProfitability(
+  device: AnalyzedDevice,
+  logistics?: DealLogistics | null,
+): AnalyzedDevice {
   const result = calculateProfitability({
     price_buy: device.price_buy,
     parts: device.allegro_parts,
     market_sell_price: device.market_sell_price,
     repairability_score: device.repairability_score,
     repairability_scale: device.repairability_scale,
+    logistics,
   });
 
   return { ...device, ...result };

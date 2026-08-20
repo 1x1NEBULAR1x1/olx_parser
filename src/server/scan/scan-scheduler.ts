@@ -37,7 +37,11 @@ export function rescheduleAutoScan(minutes: number): void {
 
   active_task = cron.schedule(cron_expression, () => {
     console.log(`[scan-scheduler] Авто-скан по таймеру (${minutes} мин)...`);
-    void triggerScan();
+    void (async () => {
+      const { isScanLockActive } = await import("@/server/repositories/scan-coordinator-repository");
+      if (await isScanLockActive()) return;
+      void triggerScan();
+    })();
   });
 }
 

@@ -11,6 +11,7 @@ const security_headers = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  distDir: process.env.E2E_SKIP_AUTH === "true" ? ".next-e2e" : ".next",
   async headers() {
     return [
       {

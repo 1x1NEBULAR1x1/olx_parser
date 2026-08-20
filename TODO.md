@@ -33,7 +33,7 @@
 ### scan-manager в dev-режиме (см. INSTRUCTIONS.md → "Паттерн scan-manager")
 Исправлено: `is_scanning` теперь вычисляется как OR(in-memory флаг, `ScanRun.status === "running"` в БД) — см. `isScanningEffective()` в `src/server/scan-manager.ts`, используется в `/api/scan/start` и `/api/devices`. Это устраняет расслоение модуля между `instrumentation.ts` и Route Handlers, т.к. БД — общий источник истины независимо от инстанса модуля.
 
-Остаточный нюанс: между записью `createScanRun()` (статус "running") и реальным стартом long-running fetch есть небольшое окно, и если процесс сервера убит (`SIGKILL`)/крашится посреди скана, `ScanRun.status` останется "running" навечно (нет watchdog/timeout) — следующий `isScanningEffective()` будет ошибочно считать, что скан идёт, до ручной правки в БД или добавления TTL-проверки (например, "running" дольше N минут → считать stale). Не критично для текущего use-case (нет автоматического перезапуска на проде), но стоит учесть, если появится продовый деплой с рестартами.
+Остаточный нюанс: ~~между записью `createScanRun()` и реальным стартом long-running fetch есть небольшое окно~~ — **исправлено (волна 1):** `ScanCoordinator` (cron lock) + `expireStaleScanRuns()` watchdog (`SCAN_STALE_TIMEOUT_MINUTES`, дефолт 90). На проде после деплоя выполнить `npx prisma migrate deploy`.
 
 ### Источники цен на запчасти (Allegro → OLX → parts-store → Ceneo → статика)
 - **Allegro (`allegro-parts-fetcher.ts`) — первичный источник.** Цепочка: REST API (`allegro-api-client.ts`, если приложение верифицировано) → HTML-парсинг `__listing_StoreState` → Scrapfly (`SCRAPFLY_API_KEY`, опционально) → пустой результат. Без верификации API и без Scrapfly на многих IP срабатывает DataDome — тогда fallback на OLX.
@@ -46,7 +46,8 @@
 
 ### Kimovil (liquidity-calculator)
 - `src/server/liquidity-calculator/kimovil-fetcher.ts` работает через autocomplete + скрапинг страницы отзывов — может ломаться при изменении вёрстки/API Kimovil.
-- **Задача**: добавить in-memory кэш (по аналогии с `cache.ts`) на `geek_score`/`user_score`, сейчас каждый вызов `calculator.enrichInputWithKimovilScore` бьёт в сеть заново.
+- [x] **L2-кэш Kimovil в `ModelCache`** — `kimovil-cache.ts`, поля `kimovil_*` в Prisma (волна 1). L1 in-memory по-прежнему в calculator.
+- **Задача (волна 2):** подключить `getKimovilScoresCached` в hot path `getLiquidityScore`, чтобы ускорить скан.
 
 ### OLX фото
 - Поле `photos` есть в GraphQL-запросе, но OLX может не возвращать ссылки на изображения.
@@ -68,11 +69,14 @@
 - [x] **Решено:** `AppSettings.auto_scan_interval_minutes` (0/15/30/60/180/360) + `src/server/scan-scheduler.ts#rescheduleAutoScan` (`node-cron`) — периодический авто-рескан без перезапуска процесса, переключается мгновенно через `PATCH /api/settings` или при старте сервера (`instrumentation.ts`).
 - **Известное ограничение:** cron-задача живёт только в in-memory `active_task` одного процесса — при нескольких инстансах сервера (кластер/несколько воркеров) каждый инстанс завёл бы СВОЙ cron и скан запускался бы N раз одновременно. Не проблема для текущего однопроцессного деплоя, но нужно учесть при горизонтальном масштабировании (например, лидер-election или внешний scheduler вместо `node-cron` внутри приложения).
 
-### Уведомления о хороших позициях (реализовано)
-- [x] **Решено:** `src/server/notifier.ts#checkAndNotify` — после каждого скана фильтрует новые устройства по `NotificationSettings` (бренды/модели/регионы/диапазон рентабельности/диапазон цены), дедуплицирует по `NotifiedListing.olx_listing_id` (чтобы не спамить повторно про одно и то же объявление на следующих сканах), создаёт in-app `Notification` + (если настроен) отправляет в Telegram. Страницы `/notifications` (лента) и `/notifications/settings` (критерии), `NotificationBell` с бейджем непрочитанных (polling раз в 30с).
-- **Известное ограничение:** Telegram — один общий чат/канал без мультипользовательности (`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` — глобальные переменные окружения, не per-user). Для многопользовательского сценария потребуется таблица подписок пользователь → chat_id.
-- **Известное ограничение:** `Notification` хранит денормализованный снэпшот полей объявления БЕЗ FK на `Device` (та таблица полностью пересоздаётся на каждом скане) — если нужна история изменений цены/статуса конкретного объявления после уведомления, потребуется отдельный механизм (сейчас `Notification` — просто "было найдено тогда-то с такими параметрами", не живая ссылка).
-- **Задача**: нет UI-индикации "уведомление устарело" (устройство могло уже быть продано/снято с продажи к моменту просмотра ленты уведомлений) — ссылка ведёт прямо на OLX, актуальность там же.
+### Уведомления о хороших позициях (per-user)
+- [x] **Решено (v2):** персональные критерии `UserNotificationSettings` (бренды/модели/регионы/диапазон рентабельности/цены) → после скана `checkAndNotify` создаёт in-app `Notification` на каждого подходящего пользователя; дедуп `NotifiedListing` per-user. Страницы `/notifications`, `/notifications/settings`, бейдж `NotificationBell`.
+- [x] **Админка:** `/admin/notifications` — лог всех уведомлений + тест (`source: "test"`, опционально Telegram).
+- [x] **Доставка:** онлайн — тост сверху (`NotificationToastHost`, смах/крестик); офлайн — Web Push (`PushSubscription` + VAPID + `public/sw.js`).
+- **Известное ограничение:** Telegram — один общий чат (`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`), не per-user. Для мультипользовательского Telegram нужна таблица подписок user → chat_id.
+- **Известное ограничение:** Web Push требует HTTPS (или localhost) и VAPID-ключи в `.env`.
+- **Известное ограничение:** `Notification` — снимок без FK на `Device`; актуальность объявления проверяется по ссылке на OLX.
+- **Задача**: UI-индикация «уведомление устарело» (объявление снято с продажи).
 
 ### БД-кэш ремонтопригодности/цены/запчастей + TTL (реализовано)
 - [x] **Решено:** двухуровневый кэш — L1 in-memory (`node-cache`, TTL из `.env`, живёт в рамках процесса) поверх L2 в БД (`ModelCache`/`PartsCostCache`, TTL из `AppSettings.cache_ttl_hours`, настраивается слайдером в `/settings`, диапазон 6ч-3мес, дефолт 72ч, переживает рестарт сервера). `avg_market_price` в `ModelCache` — доп. кросс-скановый источник `market_sell_price`, когда в текущем скане слишком мало сравнимых объявлений для медианы (`market_sell_price_source: "cached_median"`).
@@ -96,12 +100,11 @@
 - [x] **Решено:** `StatBar` (шкала с фиксированным градиентом + затемняющий оверлей от `value%`) заменил числовые 2×2-блоки ликвидности/прибыльности/ремонтопригодности на `DeviceCard` и детальной странице; цена покупки/запчастей/прибыли остались компактными текстовыми строками в zł.
 
 ### Polling при сканировании
-- [x] Индикатор прогресса в % по реальным стадиям реализован (см. выше) — polling на клиенте теперь каждые 2с во время скана (было 15с всегда, независимо от активности скана) и не идёт в состоянии покоя.
-- **Остаточная задача**: всё ещё polling, а не push — рассмотреть WebSocket/SSE (или Next.js Server Actions + revalidation) для по-настоящему real-time обновлений вместо опроса раз в 2с.
+- [x] Индикатор прогресса в % по реальным стадиям реализован (см. выше).
+- [x] **Long-poll (2026-08-19)** — скан: `GET /api/scan/status?wait=1`; уведомления: `GET /api/notifications/unread-count?wait=1`. Нет интервала 1с/15с/30с; скрытая вкладка молчит. SSE по-прежнему опционален для мультиинстанса.
 
 ### Пагинация / виртуализация
-- [x] **Решено:** добавлена клиентская пагинация (`src/components/Pagination/Pagination.tsx`, `PAGE_SIZE=24` в `page.tsx`), сброс на страницу 1 при смене фильтров/сортировки.
-- **Остаточная задача**: пагинация клиентская (весь список из `/api/devices` всё равно передаётся целиком) — при росте базы до тысяч устройств стоит перейти на серверную пагинацию (`?page=`/`?cursor=` в `/api/devices`) или виртуализацию (`react-window`).
+- [x] **Решено (волна 2):** серверная пагинация и фильтры в `/api/devices` (`page`/`offset`/`limit`/`sort` + csv-фильтры). Главная грузит только текущую страницу; `filter_meta` для FilterBar. Избранное — `load_all`.
 
 ### Фильтры, настройки батареи и подбор запчастей (реализовано)
 - [x] **Баг с запчастями для неповреждённых устройств исправлен:** ключ кэша в `cache.ts#getAllegroCache/setAllegroCache` теперь включает отсортированный список `damage_types`, а не только `brand`+`model_query`.
@@ -118,9 +121,15 @@
   2. `src/server/model-key-clusterer.ts` (новый модуль) — пост-обработка ПОСЛЕ regex-нормализации: кластеризует все `model_key` одного скана по буквенному "отпечатку" (диакритика/регистр/пробелы убраны) с допуском на опечатку (расстояние Левенштейна ≤1-2 в зависимости от длины). Цифровая часть ключа (номер модели: "23" в "s23") должна совпадать ТОЧНО — не допускает слияния разных моделей ("s23" и "s24" никогда не сливаются, даже если по буквам похожи). Каноническим для кластера становится САМЫЙ ЧАСТЫЙ вариант написания в этом скане. Вызывается в `pipeline.ts#finalizeDevices` ДО расчёта медианы цены по модели — то есть дедуп происходит один раз и одинаково влияет и на цену, и на фильтр.
 - **Известное ограничение:** кластеризация внутри одного скана (не между сканами) — при полной замене таблицы `Device` на каждом скане (см. `saveDevices`) это не проблема, но если в будущем появится инкрементальное обновление — нужно будет либо кластеризовать заново на объединённом наборе, либо хранить канонические ключи отдельно.
 
+### UI / x-kom редизайн (2026-08-15)
+- [x] Глобальная шапка `AppHeader` в layout, единый оранжевый CTA `#ff5900`, карточки/фильтры/PDP как витрина x-kom.
+- [x] SSR ленты, избранного и деталки через `feed-loader.ts`; хуки вынесены из view-компонентов.
+- [x] Анимации карточек/страниц + `prefers-reduced-motion`.
+- [x] **UX-проход 2026-08-19:** glass-шапка, pill-навигация админки, TermHint на жаргоне, ErrorState/лоадеры, `useTransition`/`useDeferredValue` на ленте, человеческие названия вместо ModelCache/TTL/ROI.
+- [ ] Светлая тема по умолчанию у части пользователей всё ещё перебивается сохранённым `dark` в localStorage — это ожидаемо.
+
 ### Офлайн / ошибка подключения
-- Нет явной обработки случая, когда API временно недоступен (например, БД заблокирована во время записи скана).
-- **Задача**: показывать понятное сообщение об ошибке вместо пустого экрана.
+- [x] Понятные коды ошибок API (`jsonError` + `ApiRequestError`) и `ErrorState` на ленте, избранном, деталке, админке и 404/error. Не пустой экран и не сырой `HTTP 503`.
 
 ### Roadmap next_steps.txt (2026-07-12, реализовано)
 - [x] **Линейки моделей** — `model-line-extractor.ts`, поля `model_line`/`model_line_label` в Prisma, фильтр и сортировка «Линейка модели» на главной.
@@ -134,11 +143,78 @@
 - [x] **MUI + Lucide** — `@mui/material`, `MuiProvider` в `layout.tsx`, редизайн `devices/[id]/page.tsx`.
 - **Ограничение:** парсинг продавца зависит от вёрстки OLX (`__NEXT_DATA__`/data-testid) — может потребовать обновления при смене шаблона.
 
-## Планы по улучшению (backlog)
+## План к релизу (аудит 2026-08-19)
+
+Полный список находок — canvas `release-audit`. Ниже — только работа до тега.
+
+### Фаза 0 — блокеры (часы)
+- [ ] Удалить `client_secret_*.json`, добавить в `.gitignore`, ротировать Google OAuth secret
+- [ ] `PRAGMA foreign_keys=ON`; ignore `*.db-wal` / `*.db-shm`
+- [ ] `POST /api/scan/start` только admin; `E2E_SKIP_AUTH` не должен быть в prod
+- [ ] Флаг `SKIP_SCAN_ON_BOOT` — не гонять OLX на каждый restart/deploy
+
+### Фаза 1 — UX главной (1–2 дня)
+- [ ] Debounce слайдеров FilterBar 250–400 мс
+- [ ] Синхрон SSR `page_size` с persist; ждать hydration `filters-store` перед URL
+- [ ] `React.memo(DeviceCard)` + стабильные колбэки; CSS-анимация спиннера деталки
+- [x] Long-poll скана и unread+toast (`wait=1`, один цикл уведомлений на вкладку)
+
+### Фаза 2 — скан и БД (2–3 дня, можно сразу после тега)
+- [x] **Лёгкий SELECT для delta-scan** — `getLatestDeviceFingerprints` + `getDevicesByIds` только для unchanged.
+- [x] **Batch snapshot в finalize** — `listFreshModelCaches` + `loadCatalogLookup` один раз на скан.
+- [x] **`listings_seen_count` increment** в `syncCatalogFromLatestDevices`, не overwrite.
+- [x] **ScanOutcome / partial OLX / не тереть ленту** — `scan-outcome.ts`; health-уведомления; статус в баннере.
+- [ ] Опциональный junk-skip в pipeline до сети iFixit/parts (TODO.md:117 устарел — junk сейчас только на ленте)
+
+### Фаза 3 — после v0.1.0
+- [ ] `next/image` + remotePatterns; виртуализация при page_size 48+
+- [ ] SQL paging вместо in-memory filter всей таблицы
+- [ ] Ужесточить `isRelevantProduct`; enrich/TTL каталога
+- [ ] E2E избранного: ждать `POST /api/user/listings`
+- [ ] SSE вместо polling; TTL cleanup cache/history
+
+**Критерий тега v0.1.0:** фаза 0 закрыта, фаза 1 на staging, один живой скан без 403, `npm test` + e2e зелёные, `npx prisma migrate deploy`.
+
+### Волна 1 — аналитика ROI + инфра (2026-08, реализовано)
+- [x] **Deal confidence** — `deal-confidence.ts`, поля `confidence_score`/`confidence_label`/`parts_*_count` на `Device`, бейдж на `DeviceCard`.
+- [x] **Risk-adjusted profit** — `risk-adjusted-profit.ts` (комиссия 5%, торг −5%, holding 14д, liquidity/confidence factors), сортировка по `risk_adjusted_profit`.
+- [x] **Price history** — модель `PriceHistorySnapshot`, сохранение после скана (`price-history-repository.ts`). **UI тренда — волна 2/3.**
+- [x] **SKIP_CENEO** — env `SKIP_CENEO=1` (дефолт), Ceneo пропускается в авто-скане.
+- [x] **Kimovil L2 cache** — поля в `ModelCache`, `getKimovilScoresCached`.
+- [x] **Scan watchdog + cron lock** — `ScanCoordinator`, `expireStaleScanRuns`, проверка lock в `scan-scheduler`.
+
+### Волна 2 — скорость скана (2026-08, реализовано)
+- [x] **Delta-scan** — `delta-scan.ts`: повторно анализируются только новые/с изменёнными title/ценой; неизменённые берутся из прошлого скана и проходят `finalizeDevices`.
+- [x] **Two-phase pipeline** — `listing-prefilter.ts`: дешёвый score по карточке → полный анализ топ-N (`TWO_PHASE_FULL_ANALYZE_LIMIT`, дефолт 80), остальные lightweight (без страницы OLX / сети iFixit).
+- [x] **Server-side pagination** — `/api/devices` принимает `page`/`offset`/`limit`/`sort` и фильтры; лента грузит только текущую страницу. `filter_meta` для UI фильтров.
+- [x] **Job queue** — in-process очередь (`job-queue.ts` / `scan-jobs.ts`), без Redis: Kimovil prefetch после скана (топ-20 моделей), Allegro prefetch по каталогу.
+- [x] **Kimovil L2 в hot path** — `getKimovilScoresFromCacheOnly` в `finalizeDevices` (без сети во время скана).
+- [x] **Unit-тесты** — `npm test` (vitest): delta-scan, prefilter, job-queue, feed-query, confidence, recommended-repair, market prices, listing heuristics, deal-economics.
+
+### Волна 3 — продукт
+- [x] **Справочник б/у цен 2026** — `model-market-price-hints.ts` хранит реальные OLX used (128 GB), без коэффициента 0.72. Redmi ≠ Mi 13, iPhone 17 Pro отдельно от 17. Ручные цены каталога (в т.ч. по памяти) дополняют справочник.
+- [x] **Логистика на фронте** — `deal-economics.ts`: сервер считает сделку без доставок, UI добавляет shipping из настроек без рескана.
+- [x] **Админ-каталог** — список с фильтрами и пагинацией как в ленте → `/admin/catalog/[id]` (цены по GB, плоский список запчастей с фильтрами, TermHint на терминах).
+### Playwright e2e (2026-08-15)
+
+- [x] Прогон: **25 passed / 3 skipped** (`npm run test:e2e`, desktop + Pixel 7). Skip: round-trip избранного (карточка не появилась в `/favorites` сразу после клика), галерея на mobile если нет `[data-testid=card-photo-gallery]` в момент проверки.
+- [x] **Качество скана / шум предупреждений** — не пишем в журнал ожидаемые заглушки: пустое описание (текст с GraphQL/деталки), iFixit stub, ★-цены lightweight. Реальные: timeout/ошибка анализа, нет ремонтопригодности, нет запчастей, нет фото, нет рыночной цены.
+- [x] **Бесперебойный скан (2026-08-19)** — partial fetch OLX (пропуск страницы, не обрыв штата), запрет пустой замены ленты, abort по таймауту лота без ретрая, L2-кеш после save, `scan_health` уведомления, `outcome_status` в API/дашборде. Формулы прибыли/цен не менялись.
+- [x] **Каталог stale при sync** — `syncCatalogFromLatestDevices` больше не ставит всем `enrichment_status: "stale"` (счётчик объявлений по-прежнему из последнего скана).
+- [x] **Админ-каталог: стейты / пакетный скан / антибот** — живой прогресс заполнения, ручная загрузка на карточке модели, сохранение прежней ремонтопригодности, автоскан каталога + паузы антибота, выбор пачкой с поиском по названию/бренду/линейке/модели.
+- [ ] **Шум в запчастях каталога** — для iPhone 13 в кэше чехлы, iPhone 4/11/12, объявления сервисов («NAPRAWA TELEFONÓW») как `water_damage`/`software`. Ужесточить `isRelevantProduct` / junk для parts-store.
+- [x] **Продавец/описание на деталке** — HTML OLX отдаёт CloudFront 403; берём `description` + `user` из GraphQL `clientCompatibleListings` (в поиске и точечно по id).
+- [x] **Источники запчастей / админка** — волны Allegro → Ceneo → магазины (parts-store + mobilepart.pl + m9parts.pl) → OLX, max 4; иконки источников; ручной скан по источнику с merge; OLX `data-src` + `{width}x{height}` + `referrerPolicy=no-referrer`.
+- [ ] E2E избранного: дождаться ответа `POST /api/user/listings`, не сразу `goto /favorites`.
+
+- [ ] **CRM / SoldDeal / watchlist**
+- [ ] **Price history UI** — график тренда на деталке устройства
+- [x] **Ручной prefetch запчастей по источникам** в карточке модели каталога (Allegro / Ceneo / магазины / OLX / все)
+- [ ] **Damage keyword v2** (без LLM)
 
 - PWA-поддержка (manifest + service worker)
 - Страница сравнения нескольких устройств
 - Экспорт в CSV
-- Watchdog/TTL для "зависших" `ScanRun` со статусом "running" (см. выше)
+- Watchdog/TTL для "зависших" `ScanRun` — **реализовано (волна 1)**, см. `ScanCoordinator` + `expireStaleScanRuns`
 - Мультипользовательские Telegram-подписки (сейчас один общий чат из `.env`, см. "Уведомления о хороших позициях" выше)
 - Лидер-election или внешний scheduler вместо `node-cron` внутри процесса — для горизонтального масштабирования авто-скана на несколько инстансов

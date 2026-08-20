@@ -1,17 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import { Bell, Smartphone } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useTranslations } from "next-intl";
 import {
-  Box, Button, Checkbox, FormControlLabel, IconButton, Slider, Stack,
-  ToggleButton, ToggleButtonGroup, Typography, useTheme,
+  Box, Button, Checkbox, FormControlLabel, Slider, Stack, TextField,
+  ToggleButton, ToggleButtonGroup, Typography,
 } from "@mui/material";
-import { HeaderActions } from "@/widgets/header/ui/header-actions/HeaderActions";
 import { fetchSettings, updateSettings } from "@/shared/api/client";
-import { AppShell, LoadingCenter, PageContainer, StickyHeader } from "@/shared/ui/page-layout";
+import { AppShell, LoadingCenter, PageContainer } from "@/shared/ui/page-layout";
 import { SettingPanel } from "@/shared/ui/setting-panel/SettingPanel";
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -72,18 +69,27 @@ function CheckboxField({
 
 export function SettingsPage() {
   const t = useTranslations("settings");
-  const t_app = useTranslations("app");
-  const theme = useTheme();
   const { data: session } = useSession();
-  const is_admin = session?.user?.role === "admin";
+  const [api_is_admin, set_api_is_admin] = useState(false);
+  const is_admin = api_is_admin || session?.user?.role === "admin";
 
   const [threshold, set_threshold] = useState(80);
   const [exclude_junk, set_exclude_junk] = useState(true);
   const [exclude_iphone, set_exclude_iphone] = useState(false);
   const [exclude_android, set_exclude_android] = useState(false);
+  const [exclude_unprofitable, set_exclude_unprofitable] = useState(false);
+  const [min_profit_pln, set_min_profit_pln] = useState(0);
+  const [min_profit_pct_of_price, set_min_profit_pct_of_price] = useState(0);
   const [junk_min_year, set_junk_min_year] = useState(2017);
   const [auto_scan_minutes, set_auto_scan_minutes] = useState(0);
   const [cache_ttl_hours, set_cache_ttl_hours] = useState(72);
+  const [shipping_parts_pln, set_shipping_parts_pln] = useState(14);
+  const [shipping_to_repair_pln, set_shipping_to_repair_pln] = useState(18);
+  const [shipping_to_customer_pln, set_shipping_to_customer_pln] = useState(14);
+  const [repair_labor_base_pln, set_repair_labor_base_pln] = useState(80);
+  const [subscription_basic_pln, set_subscription_basic_pln] = useState(0);
+  const [subscription_pro_pln, set_subscription_pro_pln] = useState(49);
+  const [allegro_parts_auto_enabled, set_allegro_parts_auto_enabled] = useState(false);
   const [loading, set_loading] = useState(true);
   const [saving_personal, set_saving_personal] = useState(false);
   const [saving_admin, set_saving_admin] = useState(false);
@@ -97,9 +103,20 @@ export function SettingsPage() {
         set_exclude_junk(settings.exclude_junk_listings);
         set_exclude_iphone(settings.exclude_iphone);
         set_exclude_android(settings.exclude_android);
+        set_exclude_unprofitable(settings.exclude_unprofitable);
+        set_min_profit_pln(settings.min_profit_pln);
+        set_min_profit_pct_of_price(settings.min_profit_pct_of_price);
         set_junk_min_year(settings.junk_min_release_year);
         set_auto_scan_minutes(settings.auto_scan_interval_minutes);
         set_cache_ttl_hours(settings.cache_ttl_hours);
+        set_shipping_parts_pln(settings.shipping_parts_pln);
+        set_shipping_to_repair_pln(settings.shipping_to_repair_pln);
+        set_shipping_to_customer_pln(settings.shipping_to_customer_pln);
+        set_repair_labor_base_pln(settings.repair_labor_base_pln);
+        set_subscription_basic_pln(settings.subscription_basic_pln);
+        set_subscription_pro_pln(settings.subscription_pro_pln);
+        set_allegro_parts_auto_enabled(settings.allegro_parts_auto_enabled);
+        set_api_is_admin(settings.is_admin);
       })
       .finally(() => set_loading(false));
   }, []);
@@ -111,6 +128,9 @@ export function SettingsPage() {
         exclude_junk_listings: exclude_junk,
         exclude_iphone,
         exclude_android,
+        exclude_unprofitable,
+        min_profit_pln,
+        min_profit_pct_of_price,
         junk_min_release_year: junk_min_year,
         battery_health_threshold_percent: threshold,
       });
@@ -127,6 +147,13 @@ export function SettingsPage() {
       await updateSettings({
         auto_scan_interval_minutes: auto_scan_minutes,
         cache_ttl_hours,
+        shipping_parts_pln,
+        shipping_to_repair_pln,
+        shipping_to_customer_pln,
+        repair_labor_base_pln,
+        subscription_basic_pln,
+        subscription_pro_pln,
+        allegro_parts_auto_enabled,
       });
       set_saved_admin_at(Date.now());
     } finally {
@@ -136,48 +163,7 @@ export function SettingsPage() {
 
   return (
     <AppShell>
-      <StickyHeader
-        title={(
-          <Typography
-            variant="h3"
-            component={Link}
-            href="/"
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1,
-              fontWeight: 900,
-              textDecoration: "none",
-              color: "text.primary",
-            }}
-          >
-            <Smartphone size={22} color={theme.palette.primary.main} aria-hidden />
-            SmartFlip
-          </Typography>
-        )}
-        subtitle={(
-          <Typography variant="caption" color="text.secondary" noWrap>
-            {t("title")}
-          </Typography>
-        )}
-        actions={(
-          <>
-            <IconButton
-              component={Link}
-              href="/notifications/settings"
-              size="small"
-              aria-label={t_app("notification_settings_link")}
-              title={t_app("notification_settings_link")}
-              sx={{ display: { xs: "none", sm: "inline-flex" } }}
-            >
-              <Bell size={18} />
-            </IconButton>
-            <HeaderActions />
-          </>
-        )}
-      />
-
-      <PageContainer maxWidth="md">
+      <PageContainer max_width="md">
         <Typography variant="h2" component="h1" sx={{ mb: 0.5, fontWeight: 900 }}>
           {t("title")}
         </Typography>
@@ -248,6 +234,56 @@ export function SettingsPage() {
                       hint={t("exclude_android_hint")}
                     />
                   </Stack>
+                </SettingPanel>
+
+                <SettingPanel>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>
+                    {t("profit_floor_section_title")}
+                  </Typography>
+                  <CheckboxField
+                    checked={exclude_unprofitable}
+                    onChange={set_exclude_unprofitable}
+                    label={t("exclude_unprofitable_label")}
+                    hint={t("exclude_unprofitable_hint")}
+                  />
+                  <Box sx={{ mt: 2, pl: 4, opacity: exclude_unprofitable ? 1 : 0.4 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>{t("min_profit_pln_label")}</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
+                      {t("min_profit_pln_hint")}
+                    </Typography>
+                    <Stack direction="row" spacing={2}>
+                      <Slider
+                        min={0}
+                        max={500}
+                        step={10}
+                        value={min_profit_pln}
+                        disabled={!exclude_unprofitable}
+                        onChange={(_, value) => set_min_profit_pln(value as number)}
+                        sx={{ flex: 1 }}
+                      />
+                      <Typography variant="h3" color="primary.main" sx={{ fontWeight: 900, minWidth: 72, textAlign: "right" }}>
+                        {min_profit_pln} zł
+                      </Typography>
+                    </Stack>
+                    <Typography variant="body2" sx={{ fontWeight: 700, mt: 2 }}>{t("min_profit_pct_label")}</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
+                      {t("min_profit_pct_hint")}
+                    </Typography>
+                    <Stack direction="row" spacing={2}>
+                      <Slider
+                        min={0}
+                        max={50}
+                        step={1}
+                        value={min_profit_pct_of_price}
+                        disabled={!exclude_unprofitable}
+                        onChange={(_, value) => set_min_profit_pct_of_price(value as number)}
+                        sx={{ flex: 1 }}
+                      />
+                      <Typography variant="h3" color="primary.main" sx={{ fontWeight: 900, minWidth: 56, textAlign: "right" }}>
+                        {min_profit_pct_of_price}%
+                      </Typography>
+                    </Stack>
+                  </Box>
                 </SettingPanel>
 
                 <SettingPanel>
@@ -335,6 +371,85 @@ export function SettingsPage() {
                         {formatCacheTtl(cache_ttl_hours, t)}
                       </Typography>
                     </Stack>
+                  </SettingPanel>
+
+                  <SettingPanel>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                      {t("logistics_section_title")}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
+                      {t("logistics_section_hint")}
+                    </Typography>
+                    <Stack spacing={2}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        label={t("shipping_parts_label")}
+                        helperText={t("shipping_parts_hint")}
+                        value={shipping_parts_pln}
+                        onChange={(e) => set_shipping_parts_pln(Number(e.target.value))}
+                      />
+                      <TextField
+                        size="small"
+                        type="number"
+                        label={t("shipping_to_repair_label")}
+                        helperText={t("shipping_to_repair_hint")}
+                        value={shipping_to_repair_pln}
+                        onChange={(e) => set_shipping_to_repair_pln(Number(e.target.value))}
+                      />
+                      <TextField
+                        size="small"
+                        type="number"
+                        label={t("shipping_to_customer_label")}
+                        helperText={t("shipping_to_customer_hint")}
+                        value={shipping_to_customer_pln}
+                        onChange={(e) => set_shipping_to_customer_pln(Number(e.target.value))}
+                      />
+                      <TextField
+                        size="small"
+                        type="number"
+                        label={t("repair_labor_label")}
+                        helperText={t("repair_labor_hint")}
+                        value={repair_labor_base_pln}
+                        onChange={(e) => set_repair_labor_base_pln(Number(e.target.value))}
+                      />
+                    </Stack>
+                  </SettingPanel>
+
+                  <SettingPanel>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                      {t("subscription_section_title")}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
+                      {t("subscription_section_hint")}
+                    </Typography>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        label={t("subscription_basic_label")}
+                        value={subscription_basic_pln}
+                        onChange={(e) => set_subscription_basic_pln(Number(e.target.value))}
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        size="small"
+                        type="number"
+                        label={t("subscription_pro_label")}
+                        value={subscription_pro_pln}
+                        onChange={(e) => set_subscription_pro_pln(Number(e.target.value))}
+                        sx={{ flex: 1 }}
+                      />
+                    </Stack>
+                  </SettingPanel>
+
+                  <SettingPanel>
+                    <CheckboxField
+                      checked={allegro_parts_auto_enabled}
+                      onChange={set_allegro_parts_auto_enabled}
+                      label={t("allegro_auto_label")}
+                      hint={t("allegro_auto_hint")}
+                    />
                   </SettingPanel>
 
                   <Box>

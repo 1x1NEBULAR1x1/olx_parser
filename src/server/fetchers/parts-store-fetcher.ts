@@ -117,7 +117,7 @@ function buildSearchQuery(
   return { search_query, search_url: buildPartsStoreSearchUrl(search_query) };
 }
 
-async function fetchPartsStoreGraphql(search_query: string): Promise<PartsStoreGraphqlProduct[]> {
+async function fetchPartsStoreGraphql(search_query: string, signal?: AbortSignal): Promise<PartsStoreGraphqlProduct[]> {
   const response = await parts_store_limiter(() =>
     fetchWithTimeout(
       PARTS_STORE_GRAPHQL,
@@ -131,6 +131,7 @@ async function fetchPartsStoreGraphql(search_query: string): Promise<PartsStoreG
             limit: config.pipeline.parts_store_search_limit,
           },
         }),
+        signal,
       },
       10_000,
     ),
@@ -160,11 +161,12 @@ export async function fetchPartsStoreParts(
   damage_type: string,
   part_keyword: string,
   limit = 3,
+  signal?: AbortSignal,
 ): Promise<PartsStorePartsResult> {
   const { search_query, search_url } = buildSearchQuery(brand, model_snippet, part_keyword);
 
   try {
-    const raw_products = await fetchPartsStoreGraphql(search_query);
+    const raw_products = await fetchPartsStoreGraphql(search_query, signal);
 
     const mapped = raw_products
       .map((product) => {

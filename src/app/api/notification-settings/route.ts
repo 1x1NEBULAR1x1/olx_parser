@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireApprovedUser } from "@/server/auth/auth-guards";
 import {
-  getNotificationSettings, updateNotificationSettings, type NotificationSettingsData,
-} from "@/server/repositories/devices-repository";
+  getUserNotificationSettings,
+  updateUserNotificationSettings,
+  type NotificationSettingsData,
+} from "@/server/repositories/user-notifications-repository";
 import { config } from "@/server/shared/config";
 
 export const runtime = "nodejs";
@@ -12,7 +14,7 @@ export async function GET() {
   const auth_result = await requireApprovedUser();
   if ("response" in auth_result) return auth_result.response;
 
-  const settings = await getNotificationSettings();
+  const settings = await getUserNotificationSettings(auth_result.user.id);
   return NextResponse.json({
     ...settings,
     telegram_configured: Boolean(config.telegram.bot_token && config.telegram.chat_id),
@@ -90,6 +92,9 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "No known settings fields provided" }, { status: 400 });
   }
 
-  const settings = await updateNotificationSettings(patch);
-  return NextResponse.json(settings);
+  const settings = await updateUserNotificationSettings(auth_result.user.id, patch);
+  return NextResponse.json({
+    ...settings,
+    telegram_configured: Boolean(config.telegram.bot_token && config.telegram.chat_id),
+  });
 }

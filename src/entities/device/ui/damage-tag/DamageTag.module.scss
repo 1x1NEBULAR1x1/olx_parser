@@ -24,23 +24,20 @@
   &_sim_slot { background: #cffafe; color: #0e7490; }
   &_unknown { background: var(--color-surface-hover); color: var(--color-text-muted); }
 
-  // Насыщенные светлые фоны из светлой темы плохо читаются на тёмном фоне —
-  // затемняем фон и повышаем яркость текста конкретно под .dark, вместо
-  // перевода этих декоративных цветов на семантические переменные (тут важно
-  // сохранить именно "цвет по типу повреждения", а не единый акцент).
+  // Декоративные цвета по типу повреждения — на navy-фонах Forge Dark.
   :global(.dark) & {
-    &_screen { background: #1e2f52; color: #93c5fd; }
-    &_battery { background: #123321; color: #86efac; }
-    &_back_cover { background: #2e1f4d; color: #d8b4fe; }
-    &_buttons { background: #3a2a0d; color: #fde68a; }
-    &_charging_port { background: #3a230f; color: #fdba74; }
-    &_camera { background: #3d1a2c; color: #f9a8d4; }
-    &_speaker { background: #0f2e42; color: #7dd3fc; }
-    &_microphone { background: #0f2e1c; color: #86efac; }
-    &_frame { background: #1e1b4b; color: #a5b4fc; }
-    &_locked { background: #3f1515; color: #fca5a5; }
-    &_water_damage { background: #3f1515; color: #fca5a5; }
-    &_software { background: #3a2f0a; color: #fde047; }
-    &_sim_slot { background: #0c2d36; color: #67e8f9; }
+    &_screen { background: #0f2238; color: #38bdf8; }
+    &_battery { background: #0c241c; color: #34d399; }
+    &_back_cover { background: #1a1630; color: #a78bfa; }
+    &_buttons { background: #241c0c; color: #fbbf24; }
+    &_charging_port { background: #24160c; color: #fb923c; }
+    &_camera { background: #24101c; color: #f472b6; }
+    &_speaker { background: #0c1e2c; color: #38bdf8; }
+    &_microphone { background: #0c241c; color: #34d399; }
+    &_frame { background: #161828; color: #818cf8; }
+    &_locked { background: #2a1218; color: #f87171; }
+    &_water_damage { background: #2a1218; color: #f87171; }
+    &_software { background: #241c0c; color: #fde68a; }
+    &_sim_slot { background: #0c1e2c; color: #22d3ee; }
   }
 }

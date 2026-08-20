@@ -33,6 +33,11 @@ export interface RawListing {
     region?: { name?: string | null } | null;
   } | null;
   photos?: Array<{ link?: string | null }> | null;
+  description?: string | null;
+  user?: {
+    name?: string | null;
+    created?: string | null;
+  } | null;
   params?: ListingParam[] | null;
 }
 

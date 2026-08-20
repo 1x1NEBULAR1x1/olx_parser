@@ -38,13 +38,28 @@ export function BrandTreeFilter({
   const [expanded_lines, set_expanded_lines] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (selected_brands.length === 0) return;
+    if (selected_brands.length === 0 && selected_models.length === 0 && selected_model_lines.length === 0) {
+      return;
+    }
     set_expanded_brands((prev) => {
       const next = new Set(prev);
       for (const brand of selected_brands) next.add(brand);
       return next;
     });
-  }, [selected_brands]);
+    set_expanded_lines((prev) => {
+      const next = new Set(prev);
+      for (const brand_node of brand_tree) {
+        for (const line_group of brand_node.lines) {
+          const line_selected = selected_model_lines.includes(line_group.line_value);
+          const model_selected = line_group.models.some((model) => selected_models.includes(model.value));
+          if (line_selected || model_selected) {
+            next.add(`${brand_node.brand}:${line_group.line_value}`);
+          }
+        }
+      }
+      return next;
+    });
+  }, [brand_tree, selected_brands, selected_model_lines, selected_models]);
 
   function toggleBrandExpand(brand: string) {
     set_expanded_brands((prev) => {

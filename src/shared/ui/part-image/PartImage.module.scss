@@ -1,0 +1,13 @@
+.part_image {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: var(--color-surface-muted);
+
+  &_fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-faint);
+  }
+}

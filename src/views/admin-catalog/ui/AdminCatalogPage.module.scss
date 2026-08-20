@@ -1,0 +1,176 @@
+.catalog {
+  &_toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  &_field {
+    min-width: 0;
+    flex: 1 1 100%;
+
+    @media (min-width: 640px) {
+      min-width: 160px;
+      flex: 0 1 180px;
+    }
+  }
+
+  &_search {
+    min-width: 0;
+    flex: 1 1 100%;
+
+    @media (min-width: 640px) {
+      min-width: 220px;
+      flex: 1 1 220px;
+    }
+  }
+
+  &_search_icon {
+    margin-right: 8px;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+  }
+
+  &_actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+
+    @media (min-width: 640px) {
+      width: auto;
+    }
+  }
+
+  &_selection {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  &_settings {
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+
+  &_settings_grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+
+    @media (min-width: 720px) {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  &_table_pending {
+    opacity: 0.72;
+    pointer-events: none;
+    transition: opacity var(--motion-fast) var(--ease-out);
+  }
+
+  &_row_live {
+    background: var(--color-primary-bg);
+  }
+
+  &_status_spin {
+    animation: catalog_spin 0.8s linear infinite;
+  }
+
+  &_btn {
+    min-height: 40px;
+    padding: 0 14px;
+    flex: 1 1 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+
+    @media (min-width: 640px) {
+      flex: 0 0 auto;
+    }
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background var(--motion-fast) var(--ease-out),
+      border-color var(--motion-fast) var(--ease-out),
+      color var(--motion-fast) var(--ease-out),
+      transform var(--motion-fast) var(--ease-out);
+
+    &:hover:not(:disabled) {
+      border-color: var(--color-primary-border);
+      color: var(--color-primary-text);
+      background: var(--color-primary-bg);
+    }
+
+    &:active:not(:disabled) {
+      transform: translateY(1px);
+      background: var(--color-primary-bg-strong);
+    }
+
+    &:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    &_primary {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: var(--color-primary-contrast);
+
+      &:hover:not(:disabled) {
+        background: var(--color-primary-hover);
+        border-color: var(--color-primary-hover);
+        color: var(--color-primary-contrast);
+      }
+
+      &:active:not(:disabled) {
+        background: var(--color-primary-hover);
+      }
+    }
+
+    &_busy {
+      position: relative;
+      padding-left: 32px;
+
+      &::before {
+        content: "";
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        width: 12px;
+        height: 12px;
+        margin-top: -6px;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: catalog_spin 0.7s linear infinite;
+      }
+    }
+  }
+
+  &_spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--color-primary-border);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: catalog_spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+}
+
+@keyframes catalog_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

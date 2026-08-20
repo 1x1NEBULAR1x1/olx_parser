@@ -9,6 +9,7 @@ import {
 import { createConcurrencyLimiter, fetchWithTimeout } from "@/server/shared/concurrency-limiter";
 import { isAllegroApiConfigured, searchAllegroOffersListing } from "@/server/fetchers/allegro-api-client";
 import { createLogger } from "@/server/shared/logger";
+import { AntibotBlockedError, isAntibotHtml, isAntibotHttpStatus } from "@/server/fetchers/antibot";
 
 const allegro_log = createLogger("allegro-parts");
 
@@ -85,15 +86,23 @@ export function parseAllegroListingHtml(html: string): AllegroListingProduct[] {
   return products;
 }
 
-async function fetchAllegroListingHtml(search_query: string): Promise<string | null> {
+async function fetchAllegroListingHtml(
+  search_query: string,
+  signal?: AbortSignal,
+): Promise<{ html: string | null; blocked: boolean; status: number | null }> {
   const url = buildAllegroPartsSearchUrl(search_query);
   const response = await allegro_limiter(() =>
-    fetchWithTimeout(url, { headers: FETCH_HEADERS }, 12_000),
+    fetchWithTimeout(url, { headers: FETCH_HEADERS, signal }, 12_000),
   );
-  if (!response.ok) return null;
+  if (isAntibotHttpStatus(response.status)) {
+    return { html: null, blocked: true, status: response.status };
+  }
+  if (!response.ok) return { html: null, blocked: false, status: response.status };
   const html = await response.text();
-  if (html.includes("captcha-delivery.com")) return null;
-  return html;
+  if (isAntibotHtml(html) || html.includes("captcha-delivery.com")) {
+    return { html: null, blocked: true, status: response.status };
+  }
+  return { html, blocked: false, status: response.status };
 }
 
 async function fetchAllegroPartsViaScrapfly(search_query: string): Promise<AllegroListingProduct[]> {
@@ -164,10 +173,12 @@ export async function fetchAllegroParts(
   damage_type: string,
   part_keyword: string,
   limit = 5,
+  signal?: AbortSignal,
 ): Promise<AllegroPartsResult> {
   const { search_query, search_url } = buildSearchQuery(brand, model_snippet, part_keyword);
 
-  const to_valid_parts = (products: AllegroListingProduct[]): AllegroPart[] => {
+  try {
+    const to_valid_parts = (products: AllegroListingProduct[]): AllegroPart[] => {
     const prefiltered = products.filter(
       (product) =>
         isRelevantProduct(product.title, brand, model_snippet) &&
@@ -200,9 +211,9 @@ export async function fetchAllegroParts(
     }
   }
 
-  const html = await fetchAllegroListingHtml(search_query);
-  if (html) {
-    const parts = to_valid_parts(parseAllegroListingHtml(html));
+  const html_result = await fetchAllegroListingHtml(search_query, signal);
+  if (html_result.html) {
+    const parts = to_valid_parts(parseAllegroListingHtml(html_result.html));
     if (parts.length > 0) {
       allegro_log.debug("HTML listing parsed", { query: search_query, count: parts.length });
       return { parts, search_url, source: "allegro_html" };
@@ -215,5 +226,13 @@ export async function fetchAllegroParts(
     return { parts: scrapfly_parts, search_url, source: "allegro_scrapfly" };
   }
 
+  if (html_result.blocked) {
+    throw new AntibotBlockedError("allegro", html_result.status ?? undefined);
+  }
+
   return { parts: [], search_url, source: "allegro_html" };
+  } catch (error) {
+    if (error instanceof AntibotBlockedError) throw error;
+    return { parts: [], search_url, source: "allegro_html" };
+  }
 }

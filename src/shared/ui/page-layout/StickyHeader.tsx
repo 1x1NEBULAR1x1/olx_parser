@@ -21,8 +21,8 @@ export function StickyHeader({ title, subtitle, actions, breadcrumb }: StickyHea
         backdropFilter: "blur(12px)",
         bgcolor: (theme) =>
           theme.palette.mode === "dark"
-            ? "rgba(20, 20, 20, 0.92)"
-            : "background.paper",
+            ? "rgba(18, 26, 42, 0.88)"
+            : "rgba(255, 255, 255, 0.88)",
       }}
     >
       <Toolbar

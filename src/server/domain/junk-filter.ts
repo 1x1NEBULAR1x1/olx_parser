@@ -60,6 +60,10 @@ const LOT_KEYWORDS = [
   // "две штуки") — MULTI_UNIT_REGEX ниже ловит только цифровую форму ("2 szt").
   "dwie sztuki", "dwa telefony", "trzy sztuki", "trzy telefony",
   "dwoje telefonów", "dwoje telefonow", "oba telefony",
+  "do sprzedania dwie", "sprzedam dwie sztuki", "sprzedam dwa telefony",
+  "do sprzedania dwie", "sprzedam dwie sztuki", "sprzedam dwa telefony",
+  "dwie sztuki motorol", "dwie sztuki samsung", "dwie sztuki iphone",
+  "jedna ma", "w drugiej",
   // Лоты «старых телефонов» — не один смартфон для ремонта.
   "stare telefony", "stare telefon", "stary telefon", "stara telefon",
   "stare smartfony", "stare smartfon", "stary smartfon", "stara smartfon",

@@ -1,23 +1,34 @@
-"use client";
-
-import { Grid } from "@mui/material";
+import styles from "./DeviceGrid.module.scss";
 
 interface DeviceGridProps {
   children: React.ReactNode;
+  is_pending?: boolean;
 }
 
-export function DeviceGrid({ children }: DeviceGridProps) {
+export function DeviceGrid({ children, is_pending = false }: DeviceGridProps) {
   return (
-    <Grid container spacing={{ xs: 2, sm: 2.5, md: 3 }}>
+    <div
+      className={`${styles.device_grid} ${is_pending ? styles.device_grid_pending : ""}`}
+      aria-busy={is_pending || undefined}
+    >
       {children}
-    </Grid>
+    </div>
   );
 }
 
-export function DeviceGridItem({ children }: { children: React.ReactNode }) {
+export function DeviceGridItem({
+  children,
+  index = 0,
+}: {
+  children: React.ReactNode;
+  index?: number;
+}) {
   return (
-    <Grid size={{ xs: 12, sm: 6, xl: 4 }}>
+    <div
+      className={styles.device_grid_item}
+      style={{ "--stagger": index } as React.CSSProperties}
+    >
       {children}
-    </Grid>
+    </div>
   );
 }

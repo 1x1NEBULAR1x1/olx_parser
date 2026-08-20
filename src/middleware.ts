@@ -12,21 +12,27 @@ function jsonError(status: number, message: string): NextResponse {
   return NextResponse.json({ error: message }, { status });
 }
 
-/** Редирект с учётом X-Forwarded-* за nginx (req.url = localhost:8080). */
+function getPublicOrigin(req: NextRequest): string {
+  const from_env = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
+  if (from_env && !from_env.includes("localhost") && !from_env.includes("127.0.0.1")) {
+    return from_env;
+  }
+
+  const host =
+    req.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ??
+    req.headers.get("host");
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+
+  if (host && !host.includes("localhost") && !host.startsWith("127.")) {
+    return `${proto}://${host}`;
+  }
+
+  return from_env ?? "http://127.0.0.1:8080";
+}
+
+/** Редирект за nginx — Host из заголовков, не nextUrl (localhost:8080). */
 function redirectTo(req: NextRequest, pathname: string): NextResponse {
-  const url = req.nextUrl.clone();
-  url.pathname = pathname;
-
-  const forwarded_host = req.headers.get("x-forwarded-host");
-  const forwarded_proto = req.headers.get("x-forwarded-proto");
-  if (forwarded_host) {
-    url.host = forwarded_host.split(",")[0]?.trim() ?? url.host;
-  }
-  if (forwarded_proto) {
-    url.protocol = forwarded_proto.endsWith(":") ? forwarded_proto : `${forwarded_proto}:`;
-  }
-
-  return NextResponse.redirect(url);
+  return NextResponse.redirect(new URL(pathname, `${getPublicOrigin(req)}/`));
 }
 
 export async function middleware(req: NextRequest) {

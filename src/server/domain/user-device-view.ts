@@ -1,6 +1,7 @@
 import type { AllegroPart, AnalyzedDevice } from "@/shared/types/domain";
 import type { UserDisplaySettingsData } from "@/server/repositories/user-display-settings-repository";
-import { enrichDeviceProfitability } from "@/server/domain/profitability";
+import { computeDeviceAnalytics } from "@/server/domain/device-analytics";
+import { refreshEstimatePartPrices } from "@/server/domain/repair-parts-stubs";
 
 /**
  * Порог АКБ — персональная настройка: на этапе скана % только сохраняется,
@@ -11,8 +12,12 @@ export function applyBatteryDamageThreshold(
   battery_health_percent: number | null,
   threshold_percent: number,
 ): string[] {
-  if (battery_health_percent === null || battery_health_percent >= threshold_percent) {
+  if (battery_health_percent === null) {
     return [...damage_types];
+  }
+
+  if (battery_health_percent >= threshold_percent) {
+    return damage_types.filter((type) => type !== "battery");
   }
 
   if (damage_types.includes("battery")) {
@@ -37,11 +42,29 @@ export function applyUserDeviceView(
     display_settings.battery_health_threshold_percent,
   );
 
-  const filtered_parts = filterPartsForDamageTypes(device.allegro_parts, effective_damage_types);
+  const filtered_parts = refreshEstimatePartPrices(
+    filterPartsForDamageTypes(device.allegro_parts, effective_damage_types),
+    device.brand,
+    device.model_query,
+    device.model_label,
+    device.storage_gb,
+  );
 
-  return enrichDeviceProfitability({
+  const analytics = computeDeviceAnalytics({
+    price_buy: device.price_buy,
+    is_negotiable: device.is_negotiable,
+    parts: filtered_parts,
+    market_sell_price: device.market_sell_price,
+    market_sell_price_source: device.market_sell_price_source,
+    repairability_score: device.repairability_score,
+    repairability_scale: device.repairability_scale,
+    liquidity_score: device.liquidity_score,
+  });
+
+  return {
     ...device,
     damage_types: effective_damage_types,
     allegro_parts: filtered_parts,
-  });
+    ...analytics,
+  };
 }

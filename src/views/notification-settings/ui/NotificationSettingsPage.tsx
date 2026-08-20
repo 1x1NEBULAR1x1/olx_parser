@@ -1,98 +1,125 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
-  Button, Checkbox, FormControlLabel, Link as MuiLink, Stack, Typography,
+  Button, Checkbox, FormControlLabel, Stack, Typography,
 } from "@mui/material";
-import { HeaderActions } from "@/widgets/header/ui/header-actions/HeaderActions";
 import { CheckboxGroup } from "@/shared/ui/checkbox-group/CheckboxGroup";
 import type { CheckboxOption } from "@/shared/ui/checkbox-group/CheckboxGroup";
 import { RangeSlider } from "@/shared/ui/range-slider/RangeSlider";
 import {
   fetchDevices, fetchNotificationSettings, updateNotificationSettings,
 } from "@/shared/api/client";
-import type { NotificationSettings, AnalyzedDevice } from "@/shared/api/client";
-import { AppShell, LoadingCenter, PageContainer, StickyHeader } from "@/shared/ui/page-layout";
+import type { DevicesFilterMeta, NotificationSettings } from "@/shared/api/client";
+import { AppShell, LoadingCenter, PageContainer } from "@/shared/ui/page-layout";
 import { SettingPanel } from "@/shared/ui/setting-panel/SettingPanel";
+import {
+  getPushPermissionState,
+  subscribeToPush,
+  unsubscribeFromPush,
+} from "@/features/notifications";
 
 const PRICE_BOUNDS_FALLBACK: [number, number] = [0, 5000];
 const PROFITABILITY_BOUNDS_FALLBACK: [number, number] = [-100, 150];
 
-function buildBounds(values: number[], fallback: [number, number]): [number, number] {
-  if (values.length === 0) return fallback;
-  return [Math.min(...values), Math.max(...values)];
-}
-
-function countBy<T>(items: T[], get_key: (item: T) => string | null): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const item of items) {
-    const key = get_key(item);
-    if (key === null) continue;
-    counts[key] = (counts[key] ?? 0) + 1;
-  }
-  return counts;
-}
+type PushUiState = "default" | "granted" | "denied" | "unsupported" | "subscribed" | "not_configured";
 
 export function NotificationSettingsPage() {
   const t = useTranslations("notification_settings");
-  const t_notifications = useTranslations("notifications");
-  const [devices, set_devices] = useState<AnalyzedDevice[]>([]);
+  const [filter_meta, set_filter_meta] = useState<DevicesFilterMeta | null>(null);
   const [settings, set_settings] = useState<NotificationSettings | null>(null);
   const [loading, set_loading] = useState(true);
   const [saving, set_saving] = useState(false);
   const [saved_at, set_saved_at] = useState<number | null>(null);
+  const [push_state, set_push_state] = useState<PushUiState>("default");
+  const [push_busy, set_push_busy] = useState(false);
+  const [push_error, set_push_error] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([fetchDevices(), fetchNotificationSettings()])
+    Promise.all([fetchDevices({ limit: 1, include_meta: true }), fetchNotificationSettings()])
       .then(([devices_res, settings_res]) => {
-        set_devices(devices_res.devices);
+        set_filter_meta(devices_res.filter_meta);
         set_settings(settings_res);
       })
       .finally(() => set_loading(false));
   }, []);
 
+  useEffect(() => {
+    void (async () => {
+      const permission = await getPushPermissionState();
+      if (permission === "unsupported") {
+        set_push_state("unsupported");
+        return;
+      }
+      if (permission === "denied") {
+        set_push_state("denied");
+        return;
+      }
+      if (permission === "granted") {
+        const registration = "serviceWorker" in navigator
+          ? await navigator.serviceWorker.getRegistration()
+          : null;
+        const sub = await registration?.pushManager.getSubscription();
+        set_push_state(sub ? "subscribed" : "granted");
+        return;
+      }
+      set_push_state("default");
+    })();
+  }, []);
+
+  async function handlePushToggle() {
+    set_push_busy(true);
+    set_push_error(null);
+    try {
+      if (push_state === "subscribed") {
+        await unsubscribeFromPush();
+        set_push_state("default");
+      } else {
+        const result = await subscribeToPush();
+        if (result === "subscribed") set_push_state("subscribed");
+        else if (result === "denied") set_push_state("denied");
+        else if (result === "not_configured") set_push_state("not_configured");
+        else set_push_state("unsupported");
+      }
+    } catch (error) {
+      set_push_error(error instanceof Error ? error.message : String(error));
+    } finally {
+      set_push_busy(false);
+    }
+  }
+
   const brand_options: CheckboxOption[] = useMemo(() => {
-    const counts = countBy(devices, (d) => (d.brand !== "unknown" ? d.brand : null));
-    return Object.entries(counts)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([brand, count]) => ({
-        value: brand,
-        label: brand.charAt(0).toUpperCase() + brand.slice(1),
-        count,
+    return (filter_meta?.brand_options ?? [])
+      .filter((option) => option.value !== "unknown")
+      .map((option) => ({
+        value: option.value,
+        label: option.label,
+        count: option.count,
       }));
-  }, [devices]);
+  }, [filter_meta]);
 
   const model_options: CheckboxOption[] = useMemo(() => {
     const result: CheckboxOption[] = [];
-    for (const device of devices) {
-      if (device.brand === "unknown" || !device.model_key) continue;
-      const existing = result.find((o) => o.value === device.model_key);
-      if (existing) {
-        existing.count = (existing.count ?? 0) + 1;
-      } else {
-        result.push({ value: device.model_key, label: device.model_label || device.model_key, count: 1 });
+    for (const models of Object.values(filter_meta?.models_by_brand ?? {})) {
+      for (const model of models) {
+        result.push({ value: model.value, label: model.label, count: model.count });
       }
     }
     return result.sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
-  }, [devices]);
+  }, [filter_meta]);
 
-  const region_options: CheckboxOption[] = useMemo(() => {
-    const counts = countBy(devices, (d) => d.region);
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .map(([region, count]) => ({ value: region, label: region, count }));
-  }, [devices]);
+  const region_options: CheckboxOption[] = useMemo(
+    () => (filter_meta?.region_options ?? []).map((option) => ({
+      value: option.value,
+      label: option.label,
+      count: option.count,
+    })),
+    [filter_meta],
+  );
 
-  const price_bounds = useMemo(
-    () => buildBounds(devices.map((d) => d.price_buy).filter((v): v is number => v !== null), PRICE_BOUNDS_FALLBACK),
-    [devices],
-  );
-  const profitability_bounds = useMemo(
-    () => buildBounds(devices.map((d) => d.profitability_pct).filter((v): v is number => v !== null), PROFITABILITY_BOUNDS_FALLBACK),
-    [devices],
-  );
+  const price_bounds = filter_meta?.price_bounds ?? PRICE_BOUNDS_FALLBACK;
+  const profitability_bounds = filter_meta?.profitability_bounds ?? PROFITABILITY_BOUNDS_FALLBACK;
 
   function updateField<K extends keyof NotificationSettings>(key: K, value: NotificationSettings[K]) {
     set_settings((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -121,25 +148,7 @@ export function NotificationSettingsPage() {
 
   return (
     <AppShell>
-      <StickyHeader
-        breadcrumb={(
-          <Stack direction="row" spacing={0.75} sx={{ mb: 0.5, typography: "body2" }}>
-            <MuiLink component={Link} href="/" underline="hover" color="inherit" sx={{ fontWeight: 700 }}>
-              SmartFlip
-            </MuiLink>
-            <Typography color="text.secondary">/</Typography>
-            <MuiLink component={Link} href="/notifications" color="text.secondary" underline="hover">
-              {t_notifications("title")}
-            </MuiLink>
-            <Typography color="text.secondary">/</Typography>
-            <Typography color="text.secondary">{t("title")}</Typography>
-          </Stack>
-        )}
-        title={null}
-        actions={<HeaderActions />}
-      />
-
-      <PageContainer maxWidth="md">
+      <PageContainer max_width="md">
         <Typography variant="h2" component="h1" sx={{ mb: 0.5, fontWeight: 900 }}>
           {t("title")}
         </Typography>
@@ -168,6 +177,35 @@ export function NotificationSettingsPage() {
               >
                 {settings.telegram_configured ? t("telegram_configured") : t("telegram_not_configured")}
               </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+                {t("delivery_hint")}
+              </Typography>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2, alignItems: { sm: "center" } }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => void handlePushToggle()}
+                  disabled={push_busy || push_state === "unsupported" || push_state === "not_configured"}
+                >
+                  {push_busy
+                    ? t("push_working")
+                    : push_state === "subscribed"
+                      ? t("push_disable")
+                      : t("push_enable")}
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  {push_state === "subscribed" && t("push_status_on")}
+                  {push_state === "denied" && t("push_status_denied")}
+                  {push_state === "unsupported" && t("push_status_unsupported")}
+                  {push_state === "not_configured" && t("push_status_not_configured")}
+                  {push_state === "default" && t("push_status_off")}
+                </Typography>
+              </Stack>
+              {push_error && (
+                <Typography variant="caption" color="error.main" sx={{ mt: 1, display: "block" }}>
+                  {push_error}
+                </Typography>
+              )}
             </SettingPanel>
 
             <Stack spacing={2.5} sx={{ opacity: settings.enabled ? 1 : 0.4, pointerEvents: settings.enabled ? "auto" : "none" }}>

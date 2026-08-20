@@ -1,31 +1,28 @@
 "use client";
 
+import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { Box, Typography } from "@mui/material";
-import { AppShell } from "@/shared/ui/page-layout";
+import { FileQuestion } from "lucide-react";
+import { AppShell, ErrorState, PageContainer } from "@/shared/ui/page-layout";
+import styles from "@/shared/ui/page-layout/ErrorState.module.scss";
 
 export default function NotFound() {
   const t = useTranslations("errors");
 
   return (
     <AppShell>
-      <Box
-        component="main"
-        sx={{
-          minHeight: "100vh",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          p: 4,
-          color: "text.secondary",
-        }}
-      >
-        <Typography variant="h1" component="h1" color="text.primary" sx={{ mb: 1.5 }}>
-          {t("not_found_title")}
-        </Typography>
-        <Typography variant="body1">{t("not_found_text")}</Typography>
-      </Box>
+      <PageContainer max_width="md">
+        <ErrorState
+          icon={<FileQuestion size={28} />}
+          title={t("not_found_title")}
+          message={t("not_found_text")}
+          action={(
+            <Link href="/" className={`${styles.error_state_btn} ${styles.error_state_btn_primary}`}>
+              {t("go_home")}
+            </Link>
+          )}
+        />
+      </PageContainer>
     </AppShell>
   );
 }

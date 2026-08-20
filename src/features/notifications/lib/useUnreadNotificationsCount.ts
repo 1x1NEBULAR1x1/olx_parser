@@ -1,32 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { fetchUnreadNotificationsCount } from "@/shared/api/client";
-
-const POLL_INTERVAL_MS = 30_000;
+import { useSession } from "next-auth/react";
+import { useNotificationsLive } from "@/features/notifications/lib/use-notifications-live";
+import { useNotificationsLiveStore } from "@/features/notifications/model/notifications-live-store";
 
 export function useUnreadNotificationsCount(): number {
-  const [unread_count, set_unread_count] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const count = await fetchUnreadNotificationsCount();
-        if (!cancelled) set_unread_count(count);
-      } catch {
-        // Сервер временно недоступен — повторим на следующем тике.
-      }
-    }
-
-    void poll();
-    const interval = setInterval(poll, POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
-
-  return unread_count;
+  const { status } = useSession();
+  useNotificationsLive();
+  const unread_count = useNotificationsLiveStore((state) => state.unread_count);
+  return status === "authenticated" ? unread_count : 0;
 }

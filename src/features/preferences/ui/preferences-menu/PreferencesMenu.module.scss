@@ -15,12 +15,11 @@
     cursor: pointer;
     padding: 0;
     flex-shrink: 0;
-    transition: color 0.15s, border-color 0.15s, background 0.15s;
+    transition: color 0.15s, border-color 0.15s;
 
     &:hover {
       color: var(--color-primary-text);
       border-color: var(--color-primary-border-strong);
-      background: var(--color-surface-hover);
     }
   }
 
@@ -77,6 +76,12 @@
       color: var(--color-text);
       border-color: var(--color-border-subtle);
       box-shadow: 0 1px 2px var(--color-shadow);
+    }
+
+    &_active {
+      color: var(--color-primary-text);
+      background: var(--color-primary-bg);
+      border-color: var(--color-primary-border);
     }
   }
 

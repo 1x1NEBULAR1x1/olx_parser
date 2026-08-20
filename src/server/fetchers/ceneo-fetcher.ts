@@ -2,6 +2,7 @@ import * as cheerio from "cheerio";
 import type { AllegroPart } from "@/shared/types/domain";
 import { filterPartsByMedianPrice, isPriceRealistic, isRelevantProduct, parsePlnPrice } from "@/server/domain/parts-shared";
 import { createConcurrencyLimiter, fetchWithTimeout } from "@/server/shared/concurrency-limiter";
+import { AntibotBlockedError, isAntibotHtml, isAntibotHttpStatus } from "@/server/fetchers/antibot";
 
 const CENEO_BASE = "https://www.ceneo.pl";
 const CENEO_SEARCH = `${CENEO_BASE}/szukaj-0020`;
@@ -22,8 +23,8 @@ const FETCH_HEADERS = {
 // одному подвисшему запросу держать очередь пайплайна.
 const ceneo_limiter = createConcurrencyLimiter(2, 500);
 
-async function throttledFetch(url: string): Promise<Response> {
-  return ceneo_limiter(() => fetchWithTimeout(url, { headers: FETCH_HEADERS }, 8000));
+async function throttledFetch(url: string, signal?: AbortSignal): Promise<Response> {
+  return ceneo_limiter(() => fetchWithTimeout(url, { headers: FETCH_HEADERS, signal }, 8000));
 }
 
 function normalizeImageUrl(src: string | undefined): string | null {
@@ -40,16 +41,22 @@ interface CeneoProduct {
   image: string | null;
 }
 
-async function fetchCeneoPage(search_query: string): Promise<CeneoProduct[]> {
+async function fetchCeneoPage(search_query: string, signal?: AbortSignal): Promise<CeneoProduct[]> {
   const encoded = encodeURIComponent(search_query).replace(/%20/g, "+");
   const url = `${CENEO_SEARCH}${encoded};0020.htm`;
 
-  const response = await throttledFetch(url);
+  const response = await throttledFetch(url, signal);
+  if (isAntibotHttpStatus(response.status)) {
+    throw new AntibotBlockedError("ceneo", response.status);
+  }
   if (!response.ok) {
     throw new Error(`Ceneo HTTP ${response.status}`);
   }
 
   const html = await response.text();
+  if (isAntibotHtml(html)) {
+    throw new AntibotBlockedError("ceneo", response.status);
+  }
   const $ = cheerio.load(html);
 
   const products: CeneoProduct[] = [];
@@ -109,6 +116,7 @@ export async function fetchCeneoParts(
   damage_type: string,
   part_keyword: string,
   limit = 3,
+  signal?: AbortSignal,
 ): Promise<CeneoPartResult> {
   // Избегаем дублирования бренда если он уже входит в model_snippet
   const brand_in_snippet =
@@ -123,7 +131,7 @@ export async function fetchCeneoParts(
   const search_url = `${CENEO_SEARCH}${encodeURIComponent(search_query).replace(/%20/g, "+")};0020.htm`;
 
   try {
-    const all_products = await fetchCeneoPage(search_query);
+    const all_products = await fetchCeneoPage(search_query, signal);
 
     const prefiltered = all_products.filter(
       (p) =>
@@ -145,7 +153,8 @@ export async function fetchCeneoParts(
       }));
 
     return { parts: valid_parts, search_url, source: "ceneo" };
-  } catch {
+  } catch (error) {
+    if (error instanceof AntibotBlockedError) throw error;
     return { parts: [], search_url, source: "ceneo" };
   }
 }

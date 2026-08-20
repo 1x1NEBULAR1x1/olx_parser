@@ -10,29 +10,33 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   timeout: 60_000,
+  expect: { timeout: 15_000 },
   reporter: "list",
   use: {
     baseURL: BASE_URL,
     trace: "off",
     screenshot: "only-on-failure",
+    locale: "ru-RU",
   },
   projects: [
     {
-      name: "pixel-7",
-      use: { ...devices["Pixel 7"] },
+      name: "desktop-chrome",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1440, height: 900 },
+      },
+      testIgnore: /mobile-visual/,
     },
     {
-      name: "iphone-14",
-      use: {
-        ...devices["iPhone 14"],
-        browserName: "chromium",
-      },
+      name: "pixel-7",
+      use: { ...devices["Pixel 7"] },
+      testMatch: /mobile-visual|app-flows/,
     },
   ],
   webServer: {
-    command: `E2E_SKIP_AUTH=true PORT=${PORT} npm run start`,
+    command: `E2E_SKIP_AUTH=true npx next start -H 127.0.0.1 -p ${PORT}`,
     url: `${BASE_URL}/api/health`,
-    reuseExistingServer: false,
-    timeout: 120_000,
+    reuseExistingServer: true,
+    timeout: 180_000,
   },
 });

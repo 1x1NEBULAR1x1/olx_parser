@@ -27,21 +27,21 @@ export function MuiProvider({ children }: MuiProviderProps) {
       createTheme({
         palette: {
           mode: is_dark ? "dark" : "light",
-          primary: { main: is_dark ? "#ff5a1f" : "#e54d00" },
-          success: { main: is_dark ? "#3ddc84" : "#16a34a" },
-          error: { main: is_dark ? "#ff6b6b" : "#dc2626" },
-          warning: { main: is_dark ? "#fbbf24" : "#d97706" },
+          primary: { main: is_dark ? "#5eb6e8" : "#2f8fd6" },
+          success: { main: is_dark ? "#4ade9a" : "#2a9d6e" },
+          error: { main: is_dark ? "#fb7185" : "#c81e1e" },
+          warning: { main: is_dark ? "#fbbf24" : "#c2410c" },
           background: {
-            default: is_dark ? "#0a0a0a" : "#f4f4f5",
-            paper: is_dark ? "#141414" : "#ffffff",
+            default: is_dark ? "#1a1916" : "#f3f2ef",
+            paper: is_dark ? "#242320" : "#ffffff",
           },
-          divider: is_dark ? "#2a2a2a" : "#e4e4e7",
+          divider: is_dark ? "#3a3934" : "#e4e1da",
           text: {
-            primary: is_dark ? "#f5f5f5" : "#18181b",
-            secondary: is_dark ? "#a8a8a8" : "#52525b",
+            primary: is_dark ? "#f4f3ef" : "#1d1d1b",
+            secondary: is_dark ? "#a8a59c" : "#5c5c58",
           },
         },
-        shape: { borderRadius: 12 },
+        shape: { borderRadius: 8 },
         typography: {
           fontFamily: "inherit",
           fontSize: 15,
@@ -71,7 +71,7 @@ export function MuiProvider({ children }: MuiProviderProps) {
           MuiButton: {
             defaultProps: { disableElevation: true },
             styleOverrides: {
-              root: { borderRadius: 10, paddingInline: 16, paddingBlock: 10 },
+              root: { borderRadius: 8, paddingInline: 16, paddingBlock: 10 },
             },
             variants: [
               {
@@ -84,7 +84,7 @@ export function MuiProvider({ children }: MuiProviderProps) {
             styleOverrides: {
               root: {
                 border: "1px solid",
-                borderColor: is_dark ? "#2a2a2a" : "#e4e4e7",
+                borderColor: is_dark ? "#3a3934" : "#e4e1da",
                 borderRadius: 10,
               },
             },

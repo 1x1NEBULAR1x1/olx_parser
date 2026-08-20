@@ -1,24 +1,17 @@
-"use client";
+import styles from "./PageContainer.module.scss";
 
-import { Container, type ContainerProps } from "@mui/material";
+interface PageContainerProps {
+  children: React.ReactNode;
+  max_width?: "md" | "xl";
+}
 
-export function PageContainer({
-  children,
-  maxWidth = "xl",
-  sx,
-  ...props
-}: ContainerProps) {
+export function PageContainer({ children, max_width = "xl" }: PageContainerProps) {
   return (
-    <Container
-      maxWidth={maxWidth}
-      sx={{
-        px: { xs: 2, sm: 3 },
-        py: { xs: 3, sm: 4, md: 5 },
-        ...sx,
-      }}
-      {...props}
+    <div
+      id="main-content"
+      className={`${styles.page_container} ${styles[`page_container_${max_width}`]}`}
     >
       {children}
-    </Container>
+    </div>
   );
 }

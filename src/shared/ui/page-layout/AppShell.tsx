@@ -1,15 +1,9 @@
-"use client";
-
-import { Box } from "@mui/material";
+import styles from "./AppShell.module.scss";
 
 interface AppShellProps {
   children: React.ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
-  return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
-      {children}
-    </Box>
-  );
+  return <div className={styles.app_shell}>{children}</div>;
 }

@@ -1,7 +1,9 @@
 import * as cheerio from "cheerio";
 import type { AllegroPart } from "@/shared/types/domain";
 import { filterPartsByMedianPrice, isPriceRealistic, isRelevantProduct, mentionsPartKeyword, parsePlnPrice } from "@/server/domain/parts-shared";
+import { extractCardImageUrl } from "@/server/fetchers/html-image";
 import { createConcurrencyLimiter, fetchWithTimeout } from "@/server/shared/concurrency-limiter";
+import { AntibotBlockedError, isAntibotHtml, isAntibotHttpStatus } from "@/server/fetchers/antibot";
 
 // Allegro REST API требует верификации приложения для GET /offers/listing —
 // живой тест (client_credentials, свежесозданный Client ID) вернул
@@ -31,8 +33,8 @@ const FETCH_HEADERS = {
 // одновременных запросов вместо строгой сериализации по одному.
 const olx_limiter = createConcurrencyLimiter(4, 100);
 
-async function throttledFetch(url: string): Promise<Response> {
-  return olx_limiter(() => fetchWithTimeout(url, { headers: FETCH_HEADERS }, 8000));
+async function throttledFetch(url: string, signal?: AbortSignal): Promise<Response> {
+  return olx_limiter(() => fetchWithTimeout(url, { headers: FETCH_HEADERS, signal }, 8000));
 }
 
 const POLISH_DIACRITICS: Record<string, string> = {
@@ -76,14 +78,20 @@ function isSinglePartListing(title: string): boolean {
   return true;
 }
 
-async function fetchOlxPartsPage(search_query: string): Promise<OlxPartProduct[]> {
+async function fetchOlxPartsPage(search_query: string, signal?: AbortSignal): Promise<OlxPartProduct[]> {
   const url = buildOlxPartsSearchUrl(search_query);
-  const response = await throttledFetch(url);
+  const response = await throttledFetch(url, signal);
+  if (isAntibotHttpStatus(response.status)) {
+    throw new AntibotBlockedError("olx", response.status);
+  }
   if (!response.ok) {
     throw new Error(`OLX parts HTTP ${response.status}`);
   }
 
   const html = await response.text();
+  if (isAntibotHtml(html)) {
+    throw new AntibotBlockedError("olx", response.status);
+  }
   const $ = cheerio.load(html);
 
   const products: OlxPartProduct[] = [];
@@ -102,7 +110,7 @@ async function fetchOlxPartsPage(search_query: string): Promise<OlxPartProduct[]
     if (!href) return;
     const product_url = href.startsWith("http") ? href : `https://www.olx.pl${href}`;
 
-    const image = $el.find("img").first().attr("src") ?? null;
+    const image = extractCardImageUrl($el);
 
     products.push({ title, price, url: product_url, image });
   });
@@ -122,6 +130,7 @@ export async function fetchOlxParts(
   damage_type: string,
   part_keyword: string,
   limit = 3,
+  signal?: AbortSignal,
 ): Promise<OlxPartsResult> {
   const brand_in_snippet =
     brand !== "unknown" && model_snippet.toLowerCase().includes(brand.toLowerCase());
@@ -134,7 +143,7 @@ export async function fetchOlxParts(
   const search_url = buildOlxPartsSearchUrl(search_query);
 
   try {
-    const all_products = await fetchOlxPartsPage(search_query);
+    const all_products = await fetchOlxPartsPage(search_query, signal);
 
     const prefiltered = all_products.filter(
       (p) =>
@@ -155,10 +164,12 @@ export async function fetchOlxParts(
         currency: "PLN",
         url: p.url,
         image: p.image,
+        source: "olx" as const,
       }));
 
     return { parts: valid_parts, search_url, source: "olx" };
-  } catch {
+  } catch (error) {
+    if (error instanceof AntibotBlockedError) throw error;
     return { parts: [], search_url, source: "olx" };
   }
 }

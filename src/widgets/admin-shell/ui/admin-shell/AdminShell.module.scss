@@ -1,18 +1,45 @@
 .nav {
+  position: sticky;
+  top: var(--header-height);
+  z-index: 20;
   display: flex;
-  gap: 8px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
+  gap: 6px;
+  margin: -8px -12px 20px;
+  padding: 8px 12px 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  background: color-mix(in srgb, var(--color-bg) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  @media (min-width: 600px) {
+    margin: -8px 0 24px;
+    padding: 8px 0 10px;
+  }
 
   &_link {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex: 0 0 auto;
     padding: 8px 14px;
-    border-radius: var(--radius-md);
+    border-radius: 999px;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--color-text-muted);
-    background: var(--color-surface-muted);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color var(--motion-fast) var(--ease-out),
+      background var(--motion-fast) var(--ease-out),
+      border-color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-fast) var(--ease-out);
 
     &:hover {
       color: var(--color-text);
@@ -20,9 +47,15 @@
     }
 
     &_active {
-      color: var(--color-primary-text);
-      background: var(--color-primary-bg);
-      border-color: var(--color-primary-border);
+      color: var(--color-primary-contrast);
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      box-shadow: 0 6px 16px var(--color-glow);
     }
+  }
+
+  &_content_pending {
+    opacity: 0.72;
+    transition: opacity var(--motion-base) var(--ease-out);
   }
 }

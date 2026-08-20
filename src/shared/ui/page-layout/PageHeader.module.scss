@@ -1,0 +1,44 @@
+.page_header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+
+  @media (min-width: 600px) {
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  &_text {
+    min-width: 0;
+    flex: 1 1 180px;
+  }
+
+  &_title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    color: var(--color-text);
+
+    @media (min-width: 600px) {
+      font-size: 28px;
+    }
+  }
+
+  &_subtitle {
+    margin: 6px 0 0;
+    font-size: 14px;
+    color: var(--color-text-muted);
+  }
+
+  &_actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+}
