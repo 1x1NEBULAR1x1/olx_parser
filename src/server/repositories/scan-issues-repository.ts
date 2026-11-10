@@ -1,5 +1,4 @@
 import { prisma } from "@/shared/db/client";
-import { retryOnSqliteBusy } from "@/server/shared/sqlite-retry";
 
 export interface ScanIssueInput {
   listing_id?: number | null;
@@ -73,44 +72,42 @@ export async function saveScanIssues(scan_id: string, items: ScanIssueInput[]): 
   const expected_kinds = new Set<string>(EXPECTED_SCAN_WARNING_KINDS);
   const persisted = items.filter((item) => !expected_kinds.has(item.kind));
 
-  await retryOnSqliteBusy(async () => {
-    if (persisted.length === 0) {
-      await prisma.scanRun.update({
-        where: { id: scan_id },
-        data: { issues_count: 0, warnings_count: 0 },
+  if (persisted.length === 0) {
+    await prisma.scanRun.update({
+      where: { id: scan_id },
+      data: { issues_count: 0, warnings_count: 0 },
+    });
+    return;
+  }
+
+  let issues_count = 0;
+  let warnings_count = 0;
+  for (const item of persisted) {
+    if (item.severity === "error") issues_count += 1;
+    else warnings_count += 1;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.scanIssue.deleteMany({ where: { scan_id } });
+
+    for (let offset = 0; offset < persisted.length; offset += BATCH_SIZE) {
+      const chunk = persisted.slice(offset, offset + BATCH_SIZE);
+      await tx.scanIssue.createMany({
+        data: chunk.map((item) => ({
+          scan_id,
+          listing_id: item.listing_id ?? null,
+          olx_url: item.olx_url ?? null,
+          title: item.title ?? null,
+          severity: item.severity,
+          kind: item.kind,
+          message: item.message,
+        })),
       });
-      return;
     }
 
-    let issues_count = 0;
-    let warnings_count = 0;
-    for (const item of persisted) {
-      if (item.severity === "error") issues_count += 1;
-      else warnings_count += 1;
-    }
-
-    await prisma.$transaction(async (tx) => {
-      await tx.scanIssue.deleteMany({ where: { scan_id } });
-
-      for (let offset = 0; offset < persisted.length; offset += BATCH_SIZE) {
-        const chunk = persisted.slice(offset, offset + BATCH_SIZE);
-        await tx.scanIssue.createMany({
-          data: chunk.map((item) => ({
-            scan_id,
-            listing_id: item.listing_id ?? null,
-            olx_url: item.olx_url ?? null,
-            title: item.title ?? null,
-            severity: item.severity,
-            kind: item.kind,
-            message: item.message,
-          })),
-        });
-      }
-
-      await tx.scanRun.update({
-        where: { id: scan_id },
-        data: { issues_count, warnings_count },
-      });
+    await tx.scanRun.update({
+      where: { id: scan_id },
+      data: { issues_count, warnings_count },
     });
   });
 }
@@ -118,11 +115,11 @@ export async function saveScanIssues(scan_id: string, items: ScanIssueInput[]): 
 let prune_expected_warnings_promise: Promise<void> | null = null;
 
 export async function pruneExpectedScanWarnings(): Promise<void> {
-  const deleted = await retryOnSqliteBusy(() => prisma.scanIssue.deleteMany({
+  const deleted = await prisma.scanIssue.deleteMany({
     where: { kind: { in: [...EXPECTED_SCAN_WARNING_KINDS] } },
-  }));
+  });
   if (deleted.count === 0) return;
-  await retryOnSqliteBusy(() => recountScanIssueCounts());
+  await recountScanIssueCounts();
 }
 
 export async function ensureExpectedScanWarningsPruned(): Promise<void> {

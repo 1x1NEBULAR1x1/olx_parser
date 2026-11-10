@@ -5,18 +5,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-require_build_tools() {
-  local missing=()
-  command -v python3 >/dev/null 2>&1 || missing+=("python3")
-  command -v g++ >/dev/null 2>&1 || missing+=("g++")
-  command -v make >/dev/null 2>&1 || missing+=("make")
-  if ((${#missing[@]} > 0)); then
-    echo "ERROR: для сборки better-sqlite3 нужны: ${missing[*]}"
-    echo "Установите: sudo apt install -y build-essential python3"
-    exit 1
-  fi
-}
-
 require_node_version() {
   local major
   major="$(node -p "process.versions.node.split('.')[0]")"
@@ -37,26 +25,39 @@ warn_low_memory() {
   fi
 }
 
-verify_better_sqlite3() {
-  node -e "require('better-sqlite3'); console.log('better-sqlite3 OK')"
+require_database_url() {
+  if [[ -z "${DATABASE_URL:-}" ]]; then
+    if [[ -f .env ]]; then
+      # shellcheck disable=SC1091
+      set -a
+      # shellcheck disable=SC1091
+      source .env
+      set +a
+    fi
+  fi
+  if [[ -z "${DATABASE_URL:-}" ]]; then
+    echo "ERROR: DATABASE_URL не задан (postgresql://...)."
+    echo "Скопируйте .env.example → .env и укажите Postgres."
+    exit 1
+  fi
+  if [[ "$DATABASE_URL" == file:* ]]; then
+    echo "ERROR: DATABASE_URL указывает на SQLite (file:...). Нужен PostgreSQL."
+    exit 1
+  fi
 }
 
 echo "==> Проверка Node.js (>=22)..."
 require_node_version
 
-echo "==> Проверка инструментов сборки (g++, make, python3)..."
-require_build_tools
-
 warn_low_memory
+
+echo "==> Проверка DATABASE_URL (PostgreSQL)..."
+require_database_url
 
 echo "==> Проверка уязвимостей (уровень high+)..."
 npm run audit:check
 
 echo "==> Установка зависимостей (npm ci, включая dev — нужны для next build)..."
-if [[ -d node_modules ]] && ! node -e "require('better-sqlite3')" 2>/dev/null; then
-  echo "    Чужие/битые бинарники — полная переустановка node_modules..."
-  rm -rf node_modules
-fi
 # NODE_ENV=production заставляет npm ci пропустить devDependencies (tailwind/postcss).
 # На сервере переменная часто уже export из systemd/.profile — явно включаем dev.
 if [[ -d node_modules/@tailwindcss/oxide-darwin-arm64 || -d node_modules/@tailwindcss/oxide-darwin-x64 ]] \
@@ -66,10 +67,6 @@ if [[ -d node_modules/@tailwindcss/oxide-darwin-arm64 || -d node_modules/@tailwi
   rm -rf node_modules
 fi
 npm ci --include=dev
-
-echo "==> Сборка better-sqlite3..."
-npm rebuild better-sqlite3 --build-from-source
-verify_better_sqlite3
 
 verify_tailwind_oxide() {
   node -e "
@@ -93,13 +90,10 @@ verify_tailwind_oxide() {
 echo "==> Проверка Tailwind oxide (linux native)..."
 verify_tailwind_oxide
 
-echo "==> Миграции БД..."
+echo "==> Миграции БД (PostgreSQL)..."
 npm run prisma:migrate:deploy
 
 echo "==> Сборка Next.js (webpack)..."
 npm run build
-
-echo "==> Финальная проверка better-sqlite3..."
-verify_better_sqlite3
 
 echo "==> Готово. Запуск: npm run start (порт ${PORT:-8080})"

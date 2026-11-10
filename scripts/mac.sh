@@ -319,17 +319,21 @@ olx_build() (
 
   _olx_install_deps
 
-  _olx_info "prisma generate + migrate deploy..."
+  if [[ -z "${DATABASE_URL:-}" ]]; then
+    # shellcheck disable=SC1091
+    set -a; source .env; set +a
+  fi
+  if [[ -z "${DATABASE_URL:-}" || "$DATABASE_URL" == file:* ]]; then
+    _olx_warn "DATABASE_URL должен быть postgresql://... (см. .env.example)"
+    exit 1
+  fi
+
+  _olx_info "prisma generate + migrate deploy (PostgreSQL)..."
   npx prisma generate
   npx prisma migrate deploy
 
-  if ! node -e "require('better-sqlite3')" >/dev/null 2>&1; then
-    _olx_warn "better-sqlite3 не грузится — npm rebuild"
-    npm rebuild better-sqlite3
-    node -e "require('better-sqlite3'); console.log('better-sqlite3 OK')"
-  else
-    _olx_ok "better-sqlite3 загружается"
-  fi
+  node -e "require('pg'); require('@prisma/adapter-pg'); console.log('pg adapter OK')"
+  _olx_ok "PostgreSQL driver adapter загружается"
 
   _olx_info "next build..."
   npm run build:next

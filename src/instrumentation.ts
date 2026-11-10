@@ -1,8 +1,5 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { ensureSqlitePragmas } = await import("@/shared/db/client");
-    await ensureSqlitePragmas().catch(() => undefined);
-
     const { reconcileStaleScanRuns, getAppSettings } = await import("@/server/repositories/devices-repository");
     const { triggerScan } = await import("@/server/scan/scan-manager");
     const { rescheduleAutoScan } = await import("@/server/scan/scan-scheduler");

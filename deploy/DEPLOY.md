@@ -33,9 +33,9 @@ AUTH_TRUST_HOST=true
 4. Google OAuth:
    - JavaScript origins: `https://your-domain.example`
    - Redirect URI: `https://your-domain.example/api/auth/callback/google`
-5. `DATABASE_URL` — абсолютный путь к SQLite на сервере, например `file:/var/lib/smartflip/data.db`
+5. `DATABASE_URL` — PostgreSQL, например `postgresql://smartflip:SECRET@127.0.0.1:5432/smartflip?schema=public`
 6. `npm run audit:check` — блокирует только **high/critical**
-7. На сервере: **Node.js >= 22**, `build-essential`, `python3`, swap ≥2GB на малых VPS
+7. На сервере: **Node.js >= 22**, PostgreSQL 14+, swap ≥2GB на малых VPS
 8. `./deploy/build.sh` — **только на Linux-сервере**; при Bus error: `SMARTFLIP_SWC_WASM=1 ./deploy/build.sh`
 
 ## Безопасность npm (аудит)
@@ -67,19 +67,23 @@ npm audit             # полный отчёт
 
 ### Системные зависимости (обязательно до npm ci)
 
-`better-sqlite3` и `@next/swc-linux-x64-gnu` — нативные модули. Их **нельзя** переносить
-с macOS: бинарники должны ставиться/собираться на Linux-сервере.
+Нужны **Node.js >= 22**, **PostgreSQL** и (для Tailwind oxide) корректные linux-native
+бинарники в `node_modules` — их **нельзя** копировать с macOS.
 
 **Node.js >= 22** обязателен (Prisma 7.8 / `@prisma/streams-local`).
 
 ```bash
 sudo apt update
-sudo apt install -y curl git build-essential python3
+sudo apt install -y curl git postgresql postgresql-contrib
 # Node.js 22 LTS
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 node -v   # v22.x
 npm -v
+
+# Пример локальной БД на сервере
+sudo -u postgres createuser -P smartflip
+sudo -u postgres createdb -O smartflip smartflip
 ```
 
 ### Bus error при `next build`
@@ -123,10 +127,11 @@ sudo mkswap /swapfile && sudo swapon /swapfile
 
 rm -rf node_modules .next
 npm ci --include=dev
-npm rebuild better-sqlite3 --build-from-source
 
 ./deploy/diagnose-native.sh
 
+# DATABASE_URL должен указывать на PostgreSQL
+npm run prisma:migrate:deploy
 npm run build
 # или: ./deploy/build.sh
 
@@ -162,29 +167,19 @@ Tailwind 4 требует платформенный пакет `@tailwindcss/ox
 **Важно:** не вызывайте `node -e "require('@next/swc-linux-x64-gnu')"` — на проблемных VPS это
 даёт Bus error. Диагностика: `./deploy/diagnose-native.sh` (безопасная, без native .node).
 
-Если при старте видите `Could not locate the bindings file` для `better_sqlite3.node`:
-
-```bash
-cd /var/www/smartflip
-sudo apt install -y build-essential python3
-rm -rf node_modules
-npm ci
-npm rebuild better-sqlite3 --build-from-source
-node -e "require('better-sqlite3')"
-./deploy/build.sh
-sudo systemctl restart smartflip
-```
+Если Prisma не подключается к Postgres — проверьте `DATABASE_URL`, что сервис
+`postgresql` запущен и роль/БД существуют (`psql "$DATABASE_URL" -c 'select 1'`).
 
 ```bash
 # 1. Клонировать проект
-sudo mkdir -p /var/www/smartflip /var/lib/smartflip
-sudo chown -R $USER:$USER /var/www/smartflip /var/lib/smartflip
+sudo mkdir -p /var/www/smartflip
+sudo chown -R $USER:$USER /var/www/smartflip
 git clone <repo> /var/www/smartflip
 cd /var/www/smartflip
 
 # 2. Env и сборка
 cp .env.example .env
-# отредактировать .env
+# отредактировать .env (обязательно DATABASE_URL=postgresql://...)
 chmod +x deploy/build.sh && ./deploy/build.sh
 
 # 3. systemd

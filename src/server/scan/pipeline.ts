@@ -812,7 +812,7 @@ const FINALIZE_PROGRESS_BATCH = 40;
  *
  * Запись медиан в ModelCache и сетевой prefetch OLX здесь не ждутся —
  * они уходят в scan-jobs после сохранения ленты, иначе стадия finalizing
- * стоит на SQLite upsert и запросах OLX по каждой модели без своей выборки.
+ * стоит на upsert в БД и запросах OLX по каждой модели без своей выборки.
  */
 async function finalizeDevices(
   raw_listings: RawAnalyzedListing[],

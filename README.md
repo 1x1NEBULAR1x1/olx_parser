@@ -8,13 +8,13 @@ Aplikacja webowa do wyszukiwania najbardziej opłacalnych uszkodzonych smartfon�
 2. Dla każdego urządzenia analizuje naprawialność przez **iFixit** (Algolia API, wynik cache'owany in-memory).
 3. Wyszukuje ceny części na **Ceneo.pl** (HTML scraper przez `cheerio`, throttle 800ms), z fallbackiem do statycznych szacunków (`static-parts-prices.ts`, oznaczone ★), gdy Ceneo nie zwróci trafnych wyników.
 4. Oblicza **rentowność** = szacowana cena sprzedaży − cena kupna − koszt części, oraz **płynność** (liquidity) na podstawie migawki rynku OLX.
-5. Wyniki zapisywane są w **SQLite przez Prisma** (`prisma/schema.prisma`) — każdy skan tworzy `ScanRun`, a urządzenia (`Device` + `Part`) są powiązane z konkretnym skanem.
+5. Wyniki zapisywane są w **PostgreSQL przez Prisma** (`prisma/schema.prisma`) — każdy skan tworzy `ScanRun`, a urządzenia (`Device` + `Part`) są powiązane z konkretnym skanem.
 6. Jedna aplikacja **Next.js 15 (App Router)** obsługuje jednocześnie UI (Server/Client Components) i API (Route Handlers) na tym samym porcie/origin — bez osobnego backendu i bez CORS.
 
 ## Architektura
 
 - **Next.js 15 App Router** — `src/app` (strony + `src/app/api/**/route.ts` — API endpoints).
-- **Prisma 7 + SQLite** — persystentne хранение устройств и истории сканирований (`prisma/schema.prisma`, `src/db/client.ts`). Prisma v7 требует driver adapter — используется `@prisma/adapter-better-sqlite3`.
+- **Prisma 7 + PostgreSQL** — persystentne хранение устройств и истории сканирований (`prisma/schema.prisma`, `src/shared/db/client.ts`). Prisma v7 требует driver adapter — используется `@prisma/adapter-pg` + `pg`.
 - **iFixit / Ceneo** — не хранятся в БД, это транзиентные in-memory кэши (`node-cache`, TTL из `.env`), пересчитываются заново при перезапуске процесса.
 - **`src/server/scan-manager.ts`** — управляет запуском сканирования; источник истины "идёт ли скан" — запись `ScanRun.status === "running"` в БД (плюс in-memory флаг как доп. защита от гонки в рамках одного процесса).
 
@@ -53,7 +53,7 @@ olx_parser/
     │   ├── liquidity-calculator/ # Kalkulator płynności urządzeń
     │   ├── ceneo-fetcher.ts      # Scraper cen części z Ceneo.pl
     │   ├── static-parts-prices.ts, brand-extractor.ts, profitability.ts, cache.ts
-    ├── db/client.ts               # Prisma client singleton (z driver adapter)
+    ├── shared/db/client.ts        # Prisma client singleton (@prisma/adapter-pg)
     └── instrumentation.ts         # Next.js hook — auto-start skanowania przy starcie serwera
 ```
 
@@ -98,7 +98,7 @@ npm run start
 
 | Zmienna | Domyślnie | Opis |
 |---------|-----------|------|
-| `DATABASE_URL` | `file:./prisma/dev.db` | Połączenie SQLite dla Prisma |
+| `DATABASE_URL` | `postgresql://…/olx_parser` | Połączenie PostgreSQL dla Prisma |
 | `IFIXIT_CACHE_TTL_SEC` | 86400 | Cache naprawialności iFixit (24h, in-memory) |
 | `PARTS_CACHE_TTL_SEC` | 3600 | Cache cen części Ceneo/statycznych (1h, in-memory) |
 | `OLX_MAX_PAGES` | 5 | Liczba stron OLX do skanowania |
@@ -109,7 +109,7 @@ npm run start
 ## Technologie
 
 - **Framework**: Next.js 15 (App Router, Route Handlers, instrumentation hook)
-- **Baza danych**: Prisma 7 (driver adapter `@prisma/adapter-better-sqlite3`) + SQLite
+- **Baza danych**: Prisma 7 (driver adapter `@prisma/adapter-pg`) + PostgreSQL
 - **Parsing**: OLX GraphQL, Ceneo.pl HTML scraper (`cheerio`), iFixit Algolia API
 - **UI**: React 19, SCSS Modules, Tailwind CSS 4
 - **Cache**: `node-cache` (in-memory, TTL z `.env`)

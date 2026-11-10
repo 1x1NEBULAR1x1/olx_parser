@@ -1,7 +1,7 @@
 # TODO
 
 Объединённый TODO после миграции `frontend/` + `backend/` в единое Next.js
-приложение. Пункты, которые уже решены миграцией (Prisma+SQLite, единый
+приложение. Пункты, которые уже решены миграцией (Prisma+PostgreSQL, единый
 процесс/порт, устранение CORS), убраны. Старые `backend/TODO.md` и
 `frontend/TODO.md` слиты сюда перед удалением папок.
 
@@ -149,7 +149,8 @@
 
 ### Фаза 0 — блокеры (часы)
 - [ ] Удалить `client_secret_*.json`, добавить в `.gitignore`, ротировать Google OAuth secret
-- [ ] `PRAGMA foreign_keys=ON`; ignore `*.db-wal` / `*.db-shm`
+- [x] Миграция БД на PostgreSQL (`@prisma/adapter-pg`, baseline migration) — SQLite/PRAGMA больше не актуальны
+- [ ] На сервере/локально: поднять Postgres, выставить `DATABASE_URL`, `npx prisma migrate deploy` (данные из старого `*.db` автоматически не переносятся)
 - [ ] `POST /api/scan/start` только admin; `E2E_SKIP_AUTH` не должен быть в prod
 - [ ] Флаг `SKIP_SCAN_ON_BOOT` — не гонять OLX на каждый restart/deploy
 

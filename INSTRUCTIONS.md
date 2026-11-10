@@ -8,7 +8,7 @@
 
 - **Next.js 15** (App Router) — единый процесс для UI и API, порт 3000
 - **React 19**, **Tailwind CSS 4** (утилитарные классы) + **SCSS Modules** (компонент-специфичные стили)
-- **Prisma 7** + **SQLite** (`@prisma/adapter-better-sqlite3` — driver adapter, обязателен в v7)
+- **Prisma 7** + **PostgreSQL** (`@prisma/adapter-pg` + `pg` — driver adapter, обязателен в v7)
 - **node-cache** — in-memory TTL-кэш для iFixit/Ceneo (не персистентный, сбрасывается при рестарте)
 - **TypeScript 5**, snake_case для переменных, camelCase для функций/методов (см. правило проекта)
 
@@ -144,8 +144,16 @@ prisma/
   migrations/
 prisma.config.ts
 src/instrumentation.ts        — авто-скан при старте + rescheduleAutoScan
-src/shared/db/client.ts       — Prisma singleton (driver adapter)
+src/shared/db/client.ts       — Prisma singleton (`@prisma/adapter-pg` + `DATABASE_URL`)
 ```
+
+## База данных (PostgreSQL)
+
+- `provider = "postgresql"` в `prisma/schema.prisma`
+- Клиент: `src/shared/db/client.ts` → `new PrismaPg({ connectionString })` + `new PrismaClient({ adapter })`
+- CLI URL — в `prisma.config.ts` через `env("DATABASE_URL")`
+- Baseline-миграция: `prisma/migrations/20261110220000_postgres_baseline` (история SQLite сброшена — новый деплой с `migrate deploy` на пустой Postgres)
+- Локально: `cp .env.example .env`, поднять Postgres, затем `npx prisma migrate dev` / `npm run prisma:migrate:deploy`
 
 ## Паттерны
 
@@ -189,7 +197,7 @@ t("common.loading")  // → "Ładowanie..."
 
 ### Добавление нового маршрута (страницы)
 1. Создать `src/app/<path>/page.tsx` (App Router: путь = структура папок).
-2. Для API — `src/app/api/<path>/route.ts` с `export const runtime = "nodejs"` (нужен для Prisma/better-sqlite3) и `export const dynamic = "force-dynamic"` (данные не должны кэшироваться статически).
+2. Для API — `src/app/api/<path>/route.ts` с `export const runtime = "nodejs"` (нужен для Prisma/`pg`) и `export const dynamic = "force-dynamic"` (данные не должны кэшироваться статически).
 
 ### Добавление нового поля к AnalyzedDevice
 1. `prisma/schema.prisma` — добавить колонку в модель `Device` (или `Part`), затем `npx prisma migrate dev --name <имя>`.
@@ -202,7 +210,7 @@ t("common.loading")  // → "Ładowanie..."
 - Единственная точка доступа к БД — `src/db/client.ts` (singleton через `globalThis`, переиспользуется между hot-reload в dev).
 - Prisma v7 не читает `datasource url` из схемы для клиента — обязателен driver adapter (`new PrismaClient({ adapter })`), см. `src/db/client.ts`.
 - Весь SQL/Prisma-специфичный код инкапсулирован в `src/server/devices-repository.ts` — остальной код (`pipeline.ts`, route handlers) работает через типы `AnalyzedDevice`, не через Prisma-модели напрямую.
-- SQLite: при старте `PRAGMA journal_mode=WAL` + `busy_timeout=8000` (`ensureSqlitePragmas`). `saveDevices` пишет `createMany` чанками (не N вложенных `create` в одной короткой транзакции). Повторы на `database is locked` — `retryOnSqliteBusy`.
+- PostgreSQL: клиент через `@prisma/adapter-pg` (`src/shared/db/client.ts`). `saveDevices` пишет `createMany` чанками (не N вложенных `create` в одной короткой транзакции). `DATABASE_URL=postgresql://...`.
 
 ### Добавление нового in-memory кэша
 ```typescript
@@ -257,7 +265,7 @@ t("common.loading")  // → "Ładowanie..."
 Пустое `description` из поиска (пустая строка, не `undefined`) раньше считалось «уже загружено» и блокировало GraphQL по id. Теперь: непустой текст → как есть; пустой → `fetchOlxListingById`; HTML только если GraphQL бросил (CloudFront 403 иначе жрёт 8с).
 
 ### Прогресс скана в процентах (`ScanRun.stage/total_listings/processed_listings`)
-`runFullPipeline(on_progress)` зовёт `on_progress({stage, total_listings?, processed_listings?})` на реальных стадиях: `fetching_listings` → `analyzing` (с тиками на каждое обработанное объявление) → (в `scan-manager.ts` отдельно) `saving`. `scan-manager.ts#createThrottledProgressWriter` пишет это в БД не чаще раза в 400ms (иначе при `PIPELINE_CONCURRENCY=8` и сотнях объявлений — поток мелких UPDATE в SQLite), но переходы стадии и финальный тик проходят без пропуска.
+`runFullPipeline(on_progress)` зовёт `on_progress({stage, total_listings?, processed_listings?})` на реальных стадиях: `fetching_listings` → `analyzing` (с тиками на каждое обработанное объявление) → (в `scan-manager.ts` отдельно) `saving`. `scan-manager.ts#createThrottledProgressWriter` пишет это в БД не чаще раза в 400ms (иначе при `PIPELINE_CONCURRENCY=8` и сотнях объявлений — поток мелких UPDATE), но переходы стадии и финальный тик проходят без пропуска.
 
 `calculateScanPercent` (`scan-progress.ts`) переводит стадию в %: `fetching_listings` 1–10% (страницы OLX и/или время, если totals ещё нет), `analyzing` 10–74%, `finalizing` 74–88%, `saving` 88–99%, `completed` 100%. Между тиками пайплайна % чуть ползёт (`item_elapsed_ms`), чтобы полоска не замирала. Живой прогресс держится in-memory (`live_progress` в `scan-manager.ts`); UI держит **один** `GET /api/scan/status?light=1&wait=1&cursor=…` (long-poll до 25с, прокси `/api/` — `proxy_read_timeout 600s`). Смена стадии/прогресса будит waiters (throttle 1с); в покое — тихий reconnect после timeout. Логи: `src/server/logger.ts` (`createLogger`, `StageTimer`, ETA в `scan-manager.ts`). `LOG_LEVEL=debug` для подробностей. `journalctl -u smartflip -f` на сервере.
 
@@ -317,7 +325,7 @@ t("common.loading")  // → "Ładowanie..."
 Выключить: `DELTA_SCAN=0`, `TWO_PHASE=0`.
 
 ### Паттерн in-process job queue (`job-queue.ts`)
-Нет Redis — однопроцессный SQLite-деплой. `createJobQueue(handlers)` — FIFO, последовательно, ошибки одной задачи не стопают очередь. `scan-jobs.ts` после скана (когда лента уже сохранена и `ScanRun` completed):
+Нет Redis — однопроцессный деплой на PostgreSQL. `createJobQueue(handlers)` — FIFO, последовательно, ошибки одной задачи не стопают очередь. `scan-jobs.ts` после скана (когда лента уже сохранена и `ScanRun` completed):
 - `enqueueMedianCacheWrites` — пакетный upsert `ModelCache.avg_market_price` по медианам ЭТОГО скана;
 - `enqueueOlxMarketPrefetch` — сетевой сбор медиан OLX для моделей без своей выборки (cap 40), кэш на следующий скан;
 - `enqueueKimovilPrefetch` — уникальные модели, cap 20, L2 `ModelCache`;
@@ -435,7 +443,7 @@ t("common.loading")  // → "Ładowanie..."
 
 ### Паттерн админ-каталога
 - Список `/admin/catalog`: поиск по названию/бренду/линейке/модели, фильтры бренд + линейка + статус, чекбоксы и пакетный скан выбранных (`POST /api/admin/catalog/enrich` с `entry_ids`). `Pagination` как в ленте. Query URL: `page`/`limit`/`search`/`brand`/`model_line`/`status` (`catalog-list-query.ts`). Смена номера — `history.pushState`, фильтры/поиск — `replaceState`. Таблица не размонтируется при смене страницы (`is_pending`). `ids_only=1` возвращает id под текущий фильтр (до 500).
-- Живой прогресс заполнения: `GET /api/admin/catalog/enrich/status?wait=1&cursor=` (long-poll до 25с, как скан). Снимок в SQLite `CatalogJobState`, иначе next dev держит прогресс в другом инстансе модуля и UI залипает на `0/434`. `processed` = max(live, snapshot, `CatalogEnrichmentRun`); пока идёт модель — показываем `current+1` и % с учётом набора повреждений. Зависший `running` без снимка сбрасывается (90с / рестарт процесса).
+- Живой прогресс заполнения: `GET /api/admin/catalog/enrich/status?wait=1&cursor=` (long-poll до 25с, как скан). Снимок в БД `CatalogJobState`, иначе next dev держит прогресс в другом инстансе модуля и UI залипает на `0/434`. `processed` = max(live, snapshot, `CatalogEnrichmentRun`); пока идёт модель — показываем `current+1` и % с учётом набора повреждений. Зависший `running` без снимка сбрасывается (90с / рестарт процесса).
 - Карточка `/admin/catalog/[id]?…`: «К списку» сохраняет query списка. Соседи той же выборки — `GET` с фильтрами, `neighbors: { prev_id, next_id, index, total }` (`getCatalogNeighbors`, порядок как в списке). Ручная загрузка запчастей показывает стадию набора и паузу антибота (`CatalogManualJobBanner`). Цены продажи **только по GB** (`manual_storage_prices` + `lock_market_price`). Глобального `manual_market_sell_price` в UI нет — при save уходит `null`.
 - Ремонтопригодность: если iFixit пуст/упал — **оставляем прежние баллы** (`keep-repairability.ts`), заглушку бренда ставим только если баллов ещё не было.
 - Настройки скана каталога на странице списка: `catalog_auto_enrich_interval_minutes` (0/60/180/360/720/1440, cron `catalog-enrich-scheduler.ts`), `catalog_antibot_wait_seconds`, `catalog_antibot_retries`, `catalog_source_delay_ms`. Пауза антибота действует только в каталоге/ручной загрузке, не в скане ленты.

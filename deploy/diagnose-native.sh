@@ -27,7 +27,7 @@ check_path() {
   fi
 }
 
-check_path "better-sqlite3 .node" "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+check_path "pg package" "node_modules/pg/package.json"
 check_path "tailwind oxide gnu" "node_modules/@tailwindcss/oxide-linux-x64-gnu/tailwindcss-oxide.linux-x64-gnu.node"
 check_path "tailwind oxide musl" "node_modules/@tailwindcss/oxide-linux-x64-musl/tailwindcss-oxide.linux-x64-musl.node"
 check_path "НЕТ oxide-darwin (хорошо на Linux)" "node_modules/@tailwindcss/oxide-darwin-arm64"
@@ -47,7 +47,8 @@ safe_check() {
   fi
 }
 
-safe_check "better-sqlite3" "require('better-sqlite3')"
+safe_check "pg" "require('pg')"
+safe_check "@prisma/adapter-pg" "require('@prisma/adapter-pg')"
 safe_check "@tailwindcss/oxide" "require('@tailwindcss/oxide')"
 
 echo ""
@@ -63,15 +64,18 @@ if (( mem_mb < 2048 && swap_kb < 512 )); then
   echo "  • RAM ${mem_mb}MB, swap ${swap_kb}MB — добавьте swap 2GB перед next build"
 fi
 
-if [[ ! -f node_modules/better-sqlite3/build/Release/better_sqlite3.node ]]; then
-  echo "  • better-sqlite3 не собран: npm rebuild better-sqlite3 --build-from-source"
-  echo "    Нужны: sudo apt install -y build-essential python3"
+if [[ ! -f node_modules/pg/package.json ]]; then
+  echo "  • pg не установлен: rm -rf node_modules && npm ci --include=dev"
 fi
 
 if [[ ! -f node_modules/@tailwindcss/oxide-linux-x64-gnu/tailwindcss-oxide.linux-x64-gnu.node ]] \
   && [[ ! -f node_modules/@tailwindcss/oxide-linux-x64-musl/tailwindcss-oxide.linux-x64-musl.node ]]; then
   echo "  • @tailwindcss/oxide для Linux не установлен"
   echo "    rm -rf node_modules && npm ci --include=dev"
+fi
+
+if [[ -z "${DATABASE_URL:-}" ]]; then
+  echo "  • DATABASE_URL не задан — нужен postgresql://..."
 fi
 
 echo "  • Сборка: npm run build  (или ./deploy/build.sh)"

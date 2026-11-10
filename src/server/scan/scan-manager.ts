@@ -30,7 +30,7 @@ const scan_log = createLogger("scan");
 
 // При concurrency=8 и сотнях объявлений processed_listings может тикать очень
 // часто — пишем прогресс в БД не чаще раза в PROGRESS_WRITE_MIN_INTERVAL_MS,
-// чтобы не заливать SQLite потоком мелких UPDATE. Первое обновление на каждой
+// чтобы не заливать БД потоком мелких UPDATE. Первое обновление на каждой
 // стадии (fetching_listings -> analyzing) и финальный processed_listings всё
 // равно проходят без пропуска — важные переходы стадии не теряются.
 const PROGRESS_WRITE_MIN_INTERVAL_MS = 400;

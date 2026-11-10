@@ -8,7 +8,6 @@ import { passesProfitFloor } from "@/server/domain/profit-floor";
 import type { UserDisplaySettingsData } from "@/server/repositories/user-display-settings-repository";
 import { applyUserDeviceView } from "@/server/domain/user-device-view";
 import { createLogger } from "@/server/shared/logger";
-import { retryOnSqliteBusy } from "@/server/shared/sqlite-retry";
 import { normalizePart } from "@/shared/lib/part-utils";
 import {
   filterDeviceFeed,
@@ -436,7 +435,7 @@ export async function saveDevices(
   );
 
   try {
-    await retryOnSqliteBusy(() => prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       await tx.device.deleteMany({});
 
       for (const chunk of chunkItems(device_rows, DEVICE_CREATE_CHUNK)) {
@@ -450,7 +449,7 @@ export async function saveDevices(
     }, {
       timeout: SAVE_TRANSACTION_TIMEOUT_MS,
       maxWait: SAVE_TRANSACTION_MAX_WAIT_MS,
-    }));
+    });
     on_progress?.(total, total);
     invalidateDevicesListCache();
     db_log.info("Устройства сохранены", {
@@ -802,7 +801,7 @@ export async function upsertModelCacheBatch(
   if (items.length === 0) return 0;
   const expires_at = new Date(Date.now() + ttl_hours * 3600_000);
   const fetched_at = new Date();
-  await retryOnSqliteBusy(() => prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     for (const item of items) {
       await tx.modelCache.upsert({
         where: { brand_model_key: { brand: item.brand, model_key: item.model_key } },
@@ -815,7 +814,7 @@ export async function upsertModelCacheBatch(
         },
       });
     }
-  }, { timeout: 60_000, maxWait: 10_000 }));
+  }, { timeout: 60_000, maxWait: 10_000 });
   return items.length;
 }
 

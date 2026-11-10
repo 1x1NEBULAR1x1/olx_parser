@@ -9,10 +9,6 @@ build/
 .next-e2e/
 next-env.d.ts
 tsconfig.tsbuildinfo
-prisma/*.db
-prisma/*.db-journal
-prisma/*.db-wal
-prisma/*.db-shm
 client_secret*.json
 credentials.json
 test-results/
